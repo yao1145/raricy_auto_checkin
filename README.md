@@ -15,7 +15,7 @@
 ## 项目结构
 
 ```
-raricy_auto_login_v1.0/
+raricy_auto_login/
 ├── run.py                      # 项目入口，一键启动
 ├── .gitignore                  # Git 忽略规则
 ├── README.md                   # 本文件
@@ -47,7 +47,7 @@ raricy_auto_login_v1.0/
 ### 1. 安装 Python 依赖
 
 ```bash
-cd raricy_auto_login_v1.0
+cd raricy_auto_login
 pip install -r backend/requirements.txt
 ```
 
@@ -110,8 +110,8 @@ python run.py
   },
   "accounts": [
     {
-      "username": "like_bot4",
-      "password": "0987654321",
+      "username": "test",
+      "password": "12345678",
       "enabled": true
     }
   ],
