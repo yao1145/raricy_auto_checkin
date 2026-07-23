@@ -1,0 +1,44 @@
+{
+  "site": {
+    "login_url": "https://raricy.com/auth/login",
+    "checkin_url": "https://raricy.com/checkin"
+  },
+  "accounts": [
+    {
+      "username": "test",
+      "password": "12345678",
+      "enabled": true
+    }
+  ],
+  "selectors": {
+    "username_input": "#username",
+    "password_input": "#password",
+    "login_button": "#submitBtn",
+    "checkin_button": "#checkinBtn",
+    "success_indicator": ".fortune-modal--open",
+    "already_checked_in": ".checkin-button:disabled, button[disabled]#checkinBtn"
+  },
+  "schedule": {
+    "times": [
+      "9:30"
+    ],
+    "timezone": "Asia/Shanghai",
+    "enabled": true
+  },
+  "fortune": {
+    "enabled": true,
+    "modal_selector": ".fortune-modal--open",
+    "card_selector": ".fortune-card",
+    "result_container_selector": "#fortuneResult",
+    "result_value_selector": "#fortuneResultValue",
+    "result_desc_selector": "#fortuneResultDesc",
+    "close_button_selector": "#fortuneCloseBtn",
+    "card_index": "random",
+    "modal_wait_timeout": 10
+  },
+  "api": {
+    "login_path": "/auth/login",
+    "checkin_path": "/checkin/api/do-checkin",
+    "fortune_path": "/checkin/api/claim-fortune"
+  }
+}

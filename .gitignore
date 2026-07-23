@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime (logs)
+runtime/
+
+# Legacy runtime dirs
+backend/logs/
