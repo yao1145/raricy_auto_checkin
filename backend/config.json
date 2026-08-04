@@ -3,13 +3,6 @@
     "login_url": "https://raricy.com/auth/login",
     "checkin_url": "https://raricy.com/checkin"
   },
-  "accounts": [
-    {
-      "username": "test",
-      "password": "12345678",
-      "enabled": true
-    }
-  ],
   "selectors": {
     "username_input": "#username",
     "password_input": "#password",
@@ -20,7 +13,7 @@
   },
   "schedule": {
     "times": [
-      "9:30"
+      "13:00"
     ],
     "timezone": "Asia/Shanghai",
     "enabled": true

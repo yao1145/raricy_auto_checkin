@@ -8,3 +8,6 @@ runtime/
 
 # Legacy runtime dirs
 backend/logs/
+
+# Accounts (secrets, not committed)
+backend/accounts.json

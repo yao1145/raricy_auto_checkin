@@ -17,6 +17,7 @@ import requests
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
 CONFIG_PATH = BASE_DIR / "config.json"
+ACCOUNTS_PATH = BASE_DIR / "accounts.json"
 
 
 # ── 自定义异常 ────────────────────────────────────────────
@@ -38,9 +39,27 @@ class NetworkError(CheckinError):
 
 # ── 配置工具 ──────────────────────────────────────────────
 def load_config() -> dict:
-    """加载配置文件"""
+    """加载配置文件（accounts 从 accounts.json 合并，保持返回结构不变）"""
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    accounts = load_accounts()
+    if accounts is not None:
+        config["accounts"] = accounts
+    return config
+
+
+def load_accounts() -> list | None:
+    """读取账号列表。文件不存在返回 None（兼容旧配置内嵌 accounts）。"""
+    if not ACCOUNTS_PATH.exists():
+        return None
+    with open(ACCOUNTS_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def save_accounts(accounts: list) -> None:
+    """保存账号列表到 accounts.json"""
+    with open(ACCOUNTS_PATH, "w", encoding="utf-8") as f:
+        json.dump(accounts, f, ensure_ascii=False, indent=2)
 
 
 # ── 打卡引擎 ──────────────────────────────────────────────

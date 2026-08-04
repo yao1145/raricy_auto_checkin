@@ -11,7 +11,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from .checkin import CheckinEngine, load_config, get_enabled_accounts
+from .checkin import CheckinEngine, load_config, save_accounts, get_enabled_accounts
 from .scheduler import CheckinScheduler, get_scheduler, read_logs, get_today_status, get_today_status_all
 
 # ── 日志配置 ──────────────────────────────────────────────
@@ -50,9 +50,12 @@ app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
 
 # ── 配置读写工具 ──────────────────────────────────────────
 def save_config(data: dict):
-    """保存配置到文件"""
+    """保存配置到文件（accounts 单独保存到 accounts.json，不写入 config.json）"""
+    accounts = data.pop("accounts", None)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    if accounts is not None:
+        save_accounts(accounts)
 
 
 def mask_sensitive(config: dict) -> dict:
