@@ -4,6 +4,7 @@
 无 Selenium / ChromeDriver 依赖。
 """
 
+import json
 import re
 import sqlite3
 import time
@@ -167,7 +168,7 @@ class BlogEngine:
                     resp = s.get(url, headers=headers, timeout=20)
                     if resp.status_code != 200:
                         return False, article_id, resp.status_code in (500, 502, 503, 504)
-                    data = resp.json()
+                    data = json.loads(resp.content.decode("utf-8"))
                     content = data.get("meta", {}).get("content", "")
                     if content:
                         store.update_content(article_id, content)
