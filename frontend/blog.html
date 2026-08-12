@@ -698,10 +698,11 @@ let loadingAll = false;   // 「加载全部」进行中：禁用操作/筛选/�
 const BTN_LABELS = { scan: "🔄 扫描目录", fetch: "⬇ 抓取内容", like: "👍 点赞所选" };
 
 function updateActionButtons() {
+  const busy = _running || loadingAll;
   const count = selectedIds.size;
-  document.getElementById("scanBtn").disabled = _running;
-  document.getElementById("fetchBtn").disabled = _running || count === 0;
-  document.getElementById("likeBtn").disabled = _running || count === 0;
+  document.getElementById("scanBtn").disabled = busy;
+  document.getElementById("fetchBtn").disabled = busy || count === 0;
+  document.getElementById("likeBtn").disabled = busy || count === 0;
 
   const all = document.getElementById("checkAll");
   if (all) {
@@ -965,6 +966,7 @@ async function loadAll() {
     const data = await API.get(`/api/blog/articles/all?${q}`);
     articles = data.articles; likes = data.likes; totalArticles = data.total;
     hasMore = false;  // 加载全部后不再无限滚动
+    selectedIds.clear();  // 旧勾选指向的 id 已不在表中，避免残留勾选
     renderArticlesTable();
     toast(`已加载全部 ${totalArticles} 篇`);
   } catch (e) {
@@ -985,6 +987,7 @@ async function clearDb() {
     await API.post("/api/blog/clear", {});
     toast("数据库已清空");
     articles = []; likes = []; totalArticles = 0; hasMore = false;
+    selectedIds.clear();  // 清空后不再有可操作的行
     renderArticlesTable();
   } catch (e) {
     toast("清空失败: " + e.message, "error");
