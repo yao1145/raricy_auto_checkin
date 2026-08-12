@@ -287,6 +287,35 @@ def blog_articles():
     })
 
 
+@app.route("/api/blog/articles/all")
+def blog_articles_all():
+    """加载全部文章（同一筛选/排序，无分页；约 1 万条上限）"""
+    args = request.args
+    author = args.get("author", "").strip() or None
+    category = args.get("category", "").strip() or None
+    min_likes = args.get("min_likes", type=int)
+    status = args.get("status", "").strip() or None
+    if status not in (None, "fetched", "unfetched"):
+        status = None
+    sort = args.get("sort", "").strip() or None
+    order = args.get("order", "asc").strip().lower()
+    if order not in ("asc", "desc"):
+        order = "asc"
+    rows, total = store.query_articles(
+        author=author, category=category, min_likes=min_likes, status=status,
+        sort=sort, order=order, offset=0, limit=100000,
+    )
+    likes = store.get_likes_for_articles([r["id"] for r in rows])
+    return jsonify({"articles": rows, "likes": likes, "total": total})
+
+
+@app.route("/api/blog/clear", methods=["POST"])
+def blog_clear():
+    """清空文章与点赞记录"""
+    store.clear_all()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/blog/meta")
 def blog_meta():
     """作者/分类下拉选项"""
@@ -312,10 +341,14 @@ def blog_scan():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
-        def cb(step, msg):
+        def cb(step, msg, done=None, total=None):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
+            if done is not None:
+                data["done_count"] = done
+            if total is not None:
+                data["total_count"] = total
             progress.store_progress(task_id, data)
 
         engine = None
@@ -348,10 +381,14 @@ def blog_fetch():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
-        def cb(step, msg):
+        def cb(step, msg, done=None, total=None):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
+            if done is not None:
+                data["done_count"] = done
+            if total is not None:
+                data["total_count"] = total
             progress.store_progress(task_id, data)
 
         engine = None
@@ -384,10 +421,14 @@ def blog_like():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
-        def cb(step, msg):
+        def cb(step, msg, done=None, total=None):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
+            if done is not None:
+                data["done_count"] = done
+            if total is not None:
+                data["total_count"] = total
             progress.store_progress(task_id, data)
 
         engine = None
