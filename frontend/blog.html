@@ -132,10 +132,13 @@
   .form-hint { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
 
   /* log table */
-  .table-wrap { overflow-x: auto; }
+  .table-wrap { overflow: auto; max-height: 60vh; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { padding: 10px 12px; text-align: left; }
   th { color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  th[data-sort] { cursor: pointer; user-select: none; }
+  th[data-sort]:hover { color: var(--text); }
+  .sort-ind { font-size: 10px; color: var(--blue); margin-left: 2px; }
   td { border-top: 1px solid var(--border); }
   tr:hover td { background: rgba(255,255,255,0.02); }
   .empty-state { text-align: center; padding: 32px 0; color: var(--text-dim); font-size: 14px; }
@@ -302,23 +305,59 @@
       <span class="card-title" style="margin-bottom:0;">📄 文章列表</span>
       <span style="font-size:12px;color:var(--text-dim);" id="articleCount"></span>
     </div>
+    <div class="card" style="padding:12px 16px;">
+      <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;gap:10px;">
+        <div class="form-group" style="flex:1;min-width:140px;">
+          <label>作者</label>
+          <select id="filterAuthor" onchange="applyFilters()"><option value="">全部</option></select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:140px;">
+          <label>分类</label>
+          <select id="filterCategory" onchange="applyFilters()"><option value="">全部</option></select>
+        </div>
+        <div class="form-group" style="flex:1;min-width:120px;">
+          <label>点赞 ≥</label>
+          <input type="number" id="filterMinLikes" min="0" value="" onchange="applyFilters()">
+        </div>
+        <div class="form-group" style="flex:1;min-width:140px;">
+          <label>内容状态</label>
+          <select id="filterStatus" onchange="applyFilters()">
+            <option value="">全部</option>
+            <option value="fetched">已抓取</option>
+            <option value="unfetched">未抓取</option>
+          </select>
+        </div>
+      </div>
+    </div>
     <div class="table-wrap">
       <table id="articlesTable">
         <thead>
           <tr>
             <th style="width:36px;"><input type="checkbox" id="checkAll" style="width:auto;cursor:pointer;" onchange="toggleAll()" title="全选 / 取消全选"></th>
-            <th>标题</th>
-            <th>作者</th>
-            <th>分类</th>
-            <th>👍 点赞</th>
-            <th>内容状态</th>
-            <th>更新时间</th>
+            <th data-sort="title" onclick="setSort('title')">标题 <span class="sort-ind"></span></th>
+            <th data-sort="author" onclick="setSort('author')">作者 <span class="sort-ind"></span></th>
+            <th data-sort="category" onclick="setSort('category')">分类 <span class="sort-ind"></span></th>
+            <th data-sort="likes_count" onclick="setSort('likes_count')">👍 点赞 <span class="sort-ind"></span></th>
+            <th data-sort="content_status" onclick="setSort('content_status')">内容状态 <span class="sort-ind"></span></th>
+            <th data-sort="content_fetched_at" onclick="setSort('content_fetched_at')">更新时间 <span class="sort-ind"></span></th>
           </tr>
         </thead>
         <tbody id="articlesBody">
           <tr><td colspan="7" class="empty-state">加载中...</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- 查看内容弹窗 -->
+  <div class="modal-overlay" id="contentModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeContentModal()">&times;</button>
+      <h2 id="contentModalTitle">文章内容</h2>
+      <div id="contentModalBody" style="white-space:pre-wrap;font-size:13px;line-height:1.7;max-height:60vh;overflow-y:auto;user-select:text;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;"></div>
+      <div class="btn-row" style="justify-content:flex-end;margin-top:12px;">
+        <button class="btn btn-ghost btn-sm" onclick="closeContentModal()">关闭</button>
+      </div>
     </div>
   </div>
 
@@ -410,31 +449,105 @@ function selectAccount(username) {
 }
 
 // ── 文章列表 ─────────────────────────────────────────────
-let articles = [];
-let likes = [];
 let selectedIds = new Set();  // 勾选的文章 id
 
-async function loadArticles() {
+// ── 筛选 / 排序 / 分页状态 ───────────────────────────────
+let filters = { author: "", category: "", minLikes: null, status: "" };
+let sortState = { key: null, dir: "asc" };
+let currentPage = 1;
+let hasMore = false;
+let loadingMore = false;
+let totalArticles = 0;
+let articles = [];
+let likes = [];
+
+function buildQuery() {
+  const p = new URLSearchParams();
+  if (filters.author) p.set("author", filters.author);
+  if (filters.category) p.set("category", filters.category);
+  if (filters.minLikes != null && filters.minLikes !== "") p.set("min_likes", filters.minLikes);
+  if (filters.status) p.set("status", filters.status);
+  if (sortState.key) { p.set("sort", sortState.key); p.set("order", sortState.dir); }
+  p.set("page", currentPage);
+  p.set("page_size", 50);
+  return p.toString();
+}
+
+async function loadArticles(reset = true) {
+  if (loadingMore) return;
+  loadingMore = true;
+  if (reset) { currentPage = 1; articles = []; }
   try {
-    const data = await API.get("/api/blog/articles");
-    articles = data.articles || [];
-    likes = data.likes || [];
+    const data = await API.get(`/api/blog/articles?${buildQuery()}`);
+    if (reset) { articles = data.articles; likes = data.likes; }
+    else { articles = articles.concat(data.articles); likes = likes.concat(data.likes); }
+    totalArticles = data.total;
+    hasMore = data.has_more;
+    currentPage = data.page;
     renderArticlesTable();
   } catch (e) {
-    articles = [];
-    likes = [];
-    document.getElementById("articlesBody").innerHTML =
-      `<tr><td colspan="7" class="empty-state" style="color:var(--red);">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+    toast("加载文章失败: " + e.message, "error");
+  } finally {
+    loadingMore = false;
+  }
+}
+
+function applyFilters() {
+  filters = {
+    author: document.getElementById("filterAuthor").value,
+    category: document.getElementById("filterCategory").value,
+    minLikes: document.getElementById("filterMinLikes").value,
+    status: document.getElementById("filterStatus").value,
+  };
+  loadArticles(true);
+}
+
+function setSort(key) {
+  if (sortState.key === key) {
+    sortState.dir = sortState.dir === "asc" ? "desc" : sortState.dir === "desc" ? null : "asc";
+    if (sortState.dir === null) sortState.key = null;
+  } else {
+    sortState.key = key;
+    sortState.dir = "asc";
+  }
+  updateSortIndicators();
+  loadArticles(true);
+}
+
+function updateSortIndicators() {
+  document.querySelectorAll("th[data-sort]").forEach(th => {
+    const ind = th.querySelector(".sort-ind");
+    if (!ind) return;
+    if (sortState.key === th.getAttribute("data-sort")) {
+      ind.textContent = sortState.dir === "asc" ? "▲" : sortState.dir === "desc" ? "▼" : "";
+    } else {
+      ind.textContent = "";
+    }
+  });
+}
+
+async function loadMeta() {
+  try {
+    const data = await API.get("/api/blog/meta");
+    const authorSel = document.getElementById("filterAuthor");
+    const catSel = document.getElementById("filterCategory");
+    authorSel.innerHTML = '<option value="">全部</option>' + (data.authors || []).map(a =>
+      `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join("");
+    catSel.innerHTML = '<option value="">全部</option>' + (data.categories || []).map(c =>
+      `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+  } catch (e) {
+    toast("加载筛选选项失败: " + e.message, "error");
   }
 }
 
 function renderArticlesTable() {
   const tbody = document.getElementById("articlesBody");
-  document.getElementById("articleCount").textContent = `共 ${articles.length} 篇`;
+  document.getElementById("articleCount").textContent = `共 ${totalArticles} 篇`;
 
   if (articles.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无文章，请先扫描目录</td></tr>';
     updateActionButtons();
+    updateSortIndicators();
     return;
   }
 
@@ -452,6 +565,11 @@ function renderArticlesTable() {
     const contentBadge = contentFetched
       ? '<span class="badge badge-green">已抓取</span>'
       : '<span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-dim);">未抓取</span>';
+
+    // 内容状态列：已抓取 → 徽章 + 查看按钮；未抓取 → 仅徽章
+    const statusCell = contentFetched
+      ? contentBadge + ` <button class="btn btn-ghost btn-sm" onclick="viewContent('${escapeHtml(id)}', '${escapeHtml(a.title)}')">查看</button>`
+      : contentBadge;
 
     // 点赞列：站点点赞数 + 本地点赞记录（tooltip）
     const likeHistory = likesByArticle[id] || [];
@@ -472,12 +590,13 @@ function renderArticlesTable() {
       <td>${escapeHtml(a.author || "-")}</td>
       <td>${a.category ? `<span class="badge badge-blue">${escapeHtml(a.category)}</span>` : "-"}</td>
       <td>${likeCell}</td>
-      <td>${contentBadge}</td>
+      <td>${statusCell}</td>
       <td style="font-size:11px;color:var(--text-dim);">${escapeHtml(updated)}</td>
     </tr>`;
   }).join("");
 
   updateActionButtons();
+  updateSortIndicators();
 }
 
 // ── 勾选状态 ──────────────────────────────────────────────
@@ -496,6 +615,40 @@ function toggleAll() {
 function getSelectedIds() {
   return [...selectedIds];
 }
+
+// ── 查看内容弹窗 ─────────────────────────────────────────
+async function viewContent(id, title) {
+  document.getElementById("contentModalTitle").textContent = title || "文章内容";
+  const body = document.getElementById("contentModalBody");
+  body.textContent = "加载中...";
+  document.getElementById("contentModal").classList.add("open");
+  try {
+    const article = await API.get(`/api/blog/article/${encodeURIComponent(id)}`);
+    body.textContent = article.content || "(无内容)";
+  } catch (e) {
+    body.textContent = "";
+    toast("加载内容失败: " + e.message, "error");
+    closeContentModal();
+  }
+}
+
+function closeContentModal() {
+  document.getElementById("contentModal").classList.remove("open");
+}
+
+// 点击遮罩关闭
+document.getElementById("contentModal").addEventListener("click", function(e) {
+  if (e.target === this) closeContentModal();
+});
+
+// ── 无限滚动 ─────────────────────────────────────────────
+document.querySelector(".table-wrap").addEventListener("scroll", function() {
+  if (loadingMore || !hasMore) return;
+  if (this.scrollTop + this.clientHeight >= this.scrollHeight - 80) {
+    currentPage += 1;
+    loadArticles(false);
+  }
+});
 
 // ── 操作按钮状态 ─────────────────────────────────────────
 let _running = false;
@@ -722,9 +875,13 @@ async function likeSelected() {
 // ── 初始化 ───────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
   loadAccounts();
+  loadMeta();
   loadArticles();
-  // 每 30 秒自动刷新文章列表
-  setInterval(loadArticles, 30000);
+  // 每 30 秒自动刷新文章列表（任务进行中跳过，避免覆盖进度）
+  setInterval(() => {
+    if (_running) return;
+    loadArticles();
+  }, 30000);
 });
 </script>
 </body>
