@@ -17,6 +17,10 @@ from .checkin import load_config
 from .client import get_api_base, login
 from . import store
 
+# 目录扫描允许的最大连续失败页数：超过即终止扫描，
+# 避免站点持续故障（鉴权过期/宕机/持续 5xx）时后台线程无限翻页。
+MAX_CONSECUTIVE_SCAN_ERRORS = 3
+
 
 class BlogEngine:
     """纯 requests 博客引擎 — 扫描目录 / 抓取内容 / 批量点赞"""
@@ -69,6 +73,7 @@ class BlogEngine:
         base = self._api_url("blog_listing_path", "/blog")
         total = new = errors = 0
         page = 1
+        consecutive_errors = 0
         seen_pages = set()
         _progress("scan", "正在扫描博客目录...")
 
@@ -118,11 +123,16 @@ class BlogEngine:
                 total += len(rows)
                 new += sum(1 for r in rows if r["id"] not in existing_ids)
                 _progress("scan", f"第 {page} 页，已收录 {total} 篇")
+                consecutive_errors = 0  # 成功读取一页即清零连续错误计数
                 page += 1
             except requests.RequestException as e:
                 errors += 1
+                consecutive_errors += 1
                 _progress("scan_error", f"第 {page} 页获取失败: {e}")
-                # 单页失败只跳过该页，继续扫描剩余目录（page 已加入 seen_pages，不会死循环）
+                # 单页失败只跳过该页继续扫描；但连续失败达上限则终止，
+                # 否则 page 恒自增，既不命中 seen_pages 也无空页可 break，会一直翻页。
+                if consecutive_errors >= MAX_CONSECUTIVE_SCAN_ERRORS:
+                    break
                 page += 1
                 continue
 

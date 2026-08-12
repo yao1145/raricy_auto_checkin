@@ -447,7 +447,8 @@ function renderArticlesTable() {
 
   tbody.innerHTML = articles.map(a => {
     const id = a.id;
-    const contentFetched = !!(a.content_fetched_at && a.content);
+    // list 接口不再返回 content（精简 payload），状态仅以抓取时间戳为准
+    const contentFetched = !!a.content_fetched_at;
     const contentBadge = contentFetched
       ? '<span class="badge badge-green">已抓取</span>'
       : '<span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-dim);">未抓取</span>';
