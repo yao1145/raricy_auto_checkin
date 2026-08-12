@@ -457,38 +457,56 @@ let sortState = { key: null, dir: "asc" };
 let currentPage = 1;
 let hasMore = false;
 let loadingMore = false;
+let pendingReset = false;
 let totalArticles = 0;
 let articles = [];
 let likes = [];
 
-function buildQuery() {
+function buildQuery(page = currentPage) {
   const p = new URLSearchParams();
   if (filters.author) p.set("author", filters.author);
   if (filters.category) p.set("category", filters.category);
   if (filters.minLikes != null && filters.minLikes !== "") p.set("min_likes", filters.minLikes);
   if (filters.status) p.set("status", filters.status);
   if (sortState.key) { p.set("sort", sortState.key); p.set("order", sortState.dir); }
-  p.set("page", currentPage);
+  p.set("page", page);
   p.set("page_size", 50);
   return p.toString();
 }
 
-async function loadArticles(reset = true) {
-  if (loadingMore) return;
+async function loadArticles(reset = true, nextPage = null) {
+  if (loadingMore) {
+    // 重置请求在滚动加载进行中到达时，不能静默丢弃——挂起，待本轮结束后重发
+    if (reset) pendingReset = true;
+    return;
+  }
   loadingMore = true;
   if (reset) { currentPage = 1; articles = []; }
   try {
-    const data = await API.get(`/api/blog/articles?${buildQuery()}`);
+    const data = await API.get(`/api/blog/articles?${buildQuery(nextPage || currentPage)}`);
     if (reset) { articles = data.articles; likes = data.likes; }
     else { articles = articles.concat(data.articles); likes = likes.concat(data.likes); }
     totalArticles = data.total;
     hasMore = data.has_more;
-    currentPage = data.page;
+    currentPage = data.page;   // 仅从响应回填，失败时 currentPage 保持不变
     renderArticlesTable();
   } catch (e) {
     toast("加载文章失败: " + e.message, "error");
+    if (reset) {
+      totalArticles = 0;
+      hasMore = false;
+      document.getElementById("articleCount").textContent = "共 0 篇";
+      document.getElementById("articlesBody").innerHTML =
+        `<tr><td colspan="7" class="empty-state" style="color:var(--red);">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+      updateActionButtons();
+      updateSortIndicators();
+    }
   } finally {
     loadingMore = false;
+    if (pendingReset) {
+      pendingReset = false;
+      loadArticles(true);
+    }
   }
 }
 
@@ -645,8 +663,7 @@ document.getElementById("contentModal").addEventListener("click", function(e) {
 document.querySelector(".table-wrap").addEventListener("scroll", function() {
   if (loadingMore || !hasMore) return;
   if (this.scrollTop + this.clientHeight >= this.scrollHeight - 80) {
-    currentPage += 1;
-    loadArticles(false);
+    loadArticles(false, currentPage + 1);
   }
 });
 
