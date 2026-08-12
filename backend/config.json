@@ -32,6 +32,9 @@
   "api": {
     "login_path": "/auth/login",
     "checkin_path": "/checkin/api/do-checkin",
-    "fortune_path": "/checkin/api/claim-fortune"
+    "fortune_path": "/checkin/api/claim-fortune",
+    "blog_listing_path": "/blog",
+    "blog_content_path": "/blog/spider/blogs",
+    "blog_like_path": "/blog"
   }
 }

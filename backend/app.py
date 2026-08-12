@@ -13,6 +13,8 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from .checkin import CheckinEngine, load_config, save_accounts, get_enabled_accounts
 from .scheduler import CheckinScheduler, get_scheduler, read_logs, get_today_status, get_today_status_all
+from .blog import BlogEngine
+from . import store, progress
 
 # ── 日志配置 ──────────────────────────────────────────────
 logging.basicConfig(
@@ -248,6 +250,117 @@ def checkin_progress(task_id):
     return jsonify(progress)
 
 
+# ── 路由：博客管理 ────────────────────────────────────────
+@app.route("/blog")
+def blog_index():
+    """返回博客控制面板"""
+    return send_from_directory(str(FRONTEND_DIR), "blog.html")
+
+
+@app.route("/api/blog/articles")
+def blog_articles():
+    """返回已扫描的文章与点赞记录"""
+    return jsonify({"articles": store.list_articles(), "likes": store.list_likes()})
+
+
+@app.route("/api/blog/scan", methods=["POST"])
+def blog_scan():
+    """异步扫描博客目录（使用第一个启用账号的已认证 session）"""
+    task_id = progress.new_task()
+    progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
+
+    def _run():
+        engine = BlogEngine()
+        # 扫描需要已认证 session 才能拿到完整列表
+        accounts = get_enabled_accounts()
+        if not accounts:
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "没有启用的账号"}})
+            return
+        engine.login(accounts[0]["username"], accounts[0]["password"])
+
+        def cb(step, msg):
+            data = progress.get_progress(task_id) or {}
+            data["current_step"] = step
+            data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
+            progress.store_progress(task_id, data)
+
+        results = engine.scan_directory(progress_cb=cb)
+        progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
+        engine.clear_session()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"task_id": task_id}), 202
+
+
+@app.route("/api/blog/fetch", methods=["POST"])
+def blog_fetch():
+    """异步抓取指定文章内容（使用第一个启用账号的已认证 session）"""
+    body = request.get_json(silent=True) or {}
+    article_ids = body.get("article_ids", [])
+    task_id = progress.new_task()
+    progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
+
+    def _run():
+        engine = BlogEngine()
+        accounts = get_enabled_accounts()
+        if not accounts:
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "没有启用的账号"}})
+            return
+        engine.login(accounts[0]["username"], accounts[0]["password"])
+
+        def cb(step, msg):
+            data = progress.get_progress(task_id) or {}
+            data["current_step"] = step
+            data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
+            progress.store_progress(task_id, data)
+
+        results = engine.fetch_contents(article_ids, progress_cb=cb)
+        progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
+        engine.clear_session()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"task_id": task_id}), 202
+
+
+@app.route("/api/blog/like", methods=["POST"])
+def blog_like():
+    """异步批量点赞指定文章（使用请求中指定的账号）"""
+    body = request.get_json(silent=True) or {}
+    article_ids = body.get("article_ids", [])
+    account = body.get("account", "")
+    task_id = progress.new_task()
+    progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
+
+    def _run():
+        engine = BlogEngine()
+        accounts = get_enabled_accounts()
+        target = next((a for a in accounts if a["username"] == account), None)
+        if not target:
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "账号不存在或未启用"}})
+            return
+
+        def cb(step, msg):
+            data = progress.get_progress(task_id) or {}
+            data["current_step"] = step
+            data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
+            progress.store_progress(task_id, data)
+
+        results = engine.like_articles(article_ids, target["username"], target["password"], progress_cb=cb)
+        progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"task_id": task_id}), 202
+
+
+@app.route("/api/blog/progress/<task_id>")
+def blog_progress(task_id):
+    """轮询博客任务进度"""
+    p = progress.get_progress(task_id)
+    if p is None:
+        return jsonify({"error": "任务不存在或已过期"}), 404
+    return jsonify(p)
+
+
 # ── 路由：打卡日志 ────────────────────────────────────────
 @app.route("/api/logs")
 def logs():
@@ -379,8 +492,10 @@ def update_config():
 
 def create_app():
     """创建并初始化 Flask 应用（工厂函数）"""
-    # 确保必要目录存在
+    # 确保必要目录存在（runtime 必须先于 blog 数据库初始化）
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     (RUNTIME_DIR / "logs").mkdir(parents=True, exist_ok=True)
+    store.init_db()
 
     # 启动调度器
     scheduler = get_scheduler()
