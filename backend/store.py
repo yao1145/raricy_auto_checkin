@@ -64,8 +64,13 @@ def upsert_articles(rows: list[dict]) -> int:
 def list_articles(limit: int = 500) -> list[dict]:
     conn = _conn()
     try:
+        # 注意：故意不 SELECT content —— 列表载荷保持小体积。
+        # content 仅在单篇抓取/查看时按需读取（get_articles_by_ids 仍返回完整行）。
         cur = conn.execute(
-            "SELECT * FROM articles ORDER BY created_at DESC LIMIT ?", (limit,)
+            """SELECT id, title, author, url, category, description,
+                      likes_count, content_fetched_at, created_at
+               FROM articles ORDER BY created_at DESC LIMIT ?""",
+            (limit,),
         )
         return [dict(r) for r in cur.fetchall()]
     finally:

@@ -270,15 +270,15 @@ def blog_scan():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
-        engine = BlogEngine()
-
         def cb(step, msg):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
             progress.store_progress(task_id, data)
 
+        engine = None
         try:
+            engine = BlogEngine()
             # 扫描需要已认证 session 才能拿到完整列表
             accounts = get_enabled_accounts()
             if not accounts:
@@ -290,7 +290,8 @@ def blog_scan():
         except Exception as e:
             progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": str(e)}})
         finally:
-            engine.clear_session()
+            if engine is not None:
+                engine.clear_session()
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"task_id": task_id}), 202
@@ -305,15 +306,15 @@ def blog_fetch():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
-        engine = BlogEngine()
-
         def cb(step, msg):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
             progress.store_progress(task_id, data)
 
+        engine = None
         try:
+            engine = BlogEngine()
             accounts = get_enabled_accounts()
             if not accounts:
                 progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "没有启用的账号"}})
@@ -324,7 +325,8 @@ def blog_fetch():
         except Exception as e:
             progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": str(e)}})
         finally:
-            engine.clear_session()
+            if engine is not None:
+                engine.clear_session()
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"task_id": task_id}), 202
@@ -340,15 +342,15 @@ def blog_like():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
-        engine = BlogEngine()
-
         def cb(step, msg):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
             progress.store_progress(task_id, data)
 
+        engine = None
         try:
+            engine = BlogEngine()
             accounts = get_enabled_accounts()
             target = next((a for a in accounts if a["username"] == account), None)
             if not target:
@@ -359,7 +361,8 @@ def blog_like():
         except Exception as e:
             progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": str(e)}})
         finally:
-            engine.clear_session()
+            if engine is not None:
+                engine.clear_session()
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"task_id": task_id}), 202

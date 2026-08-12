@@ -5,6 +5,7 @@
 """
 
 import re
+import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
@@ -79,6 +80,9 @@ class BlogEngine:
             try:
                 resp = self._session.get(url, timeout=15)
                 resp.raise_for_status()
+                # requests 对无 charset 的 text/html 默认按 ISO-8859-1 解码，
+                # 会乱码中文标题/作者 —— 先修正编码再交给 bs4。
+                resp.encoding = resp.apparent_encoding or resp.encoding
                 soup = BeautifulSoup(resp.text, "html.parser")
                 articles = soup.select("article.blog-item")
                 if not articles:
@@ -118,7 +122,9 @@ class BlogEngine:
             except requests.RequestException as e:
                 errors += 1
                 _progress("scan_error", f"第 {page} 页获取失败: {e}")
-                break
+                # 单页失败只跳过该页，继续扫描剩余目录（page 已加入 seen_pages，不会死循环）
+                page += 1
+                continue
 
         _progress("done", f"扫描完成，共 {total} 篇")
         return {"total": total, "new": new, "errors": errors}
@@ -159,6 +165,9 @@ class BlogEngine:
             except (requests.Timeout, requests.ConnectionError):
                 return False, article_id, True
             except requests.RequestException:
+                return False, article_id, False
+            except sqlite3.Error:
+                # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
                 return False, article_id, False
 
         pending = article_ids
@@ -213,6 +222,9 @@ class BlogEngine:
             except (requests.Timeout, requests.ConnectionError):
                 return False, article_id, True
             except requests.RequestException:
+                return False, article_id, False
+            except sqlite3.Error:
+                # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
                 return False, article_id, False
 
         pending = article_ids
