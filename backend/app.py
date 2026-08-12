@@ -303,7 +303,7 @@ def blog_articles_all():
         order = "asc"
     rows, total = store.query_articles(
         author=author, category=category, min_likes=min_likes, status=status,
-        sort=sort, order=order, offset=0, limit=100000,
+        sort=sort, order=order, offset=0, limit=10000,
     )
     likes = store.get_likes_for_articles([r["id"] for r in rows])
     return jsonify({"articles": rows, "likes": likes, "total": total})

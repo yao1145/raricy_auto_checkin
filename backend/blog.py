@@ -160,25 +160,28 @@ class BlogEngine:
 
         def _fetch_one(article_id):
             s = self._worker_session()
-            url = f"{base}/{article_id}"
-            headers = {"Referer": urljoin(get_api_base(self.config), f"/blog/{article_id}")}
             try:
-                resp = s.get(url, headers=headers, timeout=20)
-                if resp.status_code != 200:
-                    return False, article_id, resp.status_code in (500, 502, 503, 504)
-                data = resp.json()
-                content = data.get("meta", {}).get("content", "")
-                if content:
-                    store.update_content(article_id, content)
-                    return True, article_id, False
-                return False, article_id, False
-            except (requests.Timeout, requests.ConnectionError):
-                return False, article_id, True
-            except requests.RequestException:
-                return False, article_id, False
-            except sqlite3.Error:
-                # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
-                return False, article_id, False
+                url = f"{base}/{article_id}"
+                headers = {"Referer": urljoin(get_api_base(self.config), f"/blog/{article_id}")}
+                try:
+                    resp = s.get(url, headers=headers, timeout=20)
+                    if resp.status_code != 200:
+                        return False, article_id, resp.status_code in (500, 502, 503, 504)
+                    data = resp.json()
+                    content = data.get("meta", {}).get("content", "")
+                    if content:
+                        store.update_content(article_id, content)
+                        return True, article_id, False
+                    return False, article_id, False
+                except (requests.Timeout, requests.ConnectionError):
+                    return False, article_id, True
+                except requests.RequestException:
+                    return False, article_id, False
+                except sqlite3.Error:
+                    # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
+                    return False, article_id, False
+            finally:
+                s.close()
 
         pending = article_ids
         for _round in range(5):
@@ -200,7 +203,7 @@ class BlogEngine:
                 time.sleep(1)
             _progress("fetch", f"已抓取 {success} 篇，待重试 {len(pending)}", done=success + failed, total_count=total)
         failed += len(pending)  # 重试满轮仍未成功的，最终计入一次失败
-        _progress("done", f"抓取完成：成功 {success}，失败 {failed}")
+        _progress("done", f"抓取完成：成功 {success}，失败 {failed}", done=success + failed, total_count=total)
         return {"total": total, "success": success, "failed": failed}
 
     # ── 批量点赞 ──────────────────────────────────────────
@@ -224,20 +227,23 @@ class BlogEngine:
             if store.has_liked(article_id, username):
                 return "skipped", article_id, False
             s = self._worker_session()
-            url = f"{base}/{article_id}/like"
-            headers = {"Referer": urljoin(get_api_base(self.config), f"/blog/{article_id}")}
             try:
-                resp = s.post(url, headers=headers, timeout=5)
-                ok = resp.status_code == 200
-                store.record_like(article_id, username, ok, f"HTTP {resp.status_code}")
-                return ok, article_id, resp.status_code in (500, 502, 503, 504)
-            except (requests.Timeout, requests.ConnectionError):
-                return False, article_id, True
-            except requests.RequestException:
-                return False, article_id, False
-            except sqlite3.Error:
-                # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
-                return False, article_id, False
+                url = f"{base}/{article_id}/like"
+                headers = {"Referer": urljoin(get_api_base(self.config), f"/blog/{article_id}")}
+                try:
+                    resp = s.post(url, headers=headers, timeout=5)
+                    ok = resp.status_code == 200
+                    store.record_like(article_id, username, ok, f"HTTP {resp.status_code}")
+                    return ok, article_id, resp.status_code in (500, 502, 503, 504)
+                except (requests.Timeout, requests.ConnectionError):
+                    return False, article_id, True
+                except requests.RequestException:
+                    return False, article_id, False
+                except sqlite3.Error:
+                    # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
+                    return False, article_id, False
+            finally:
+                s.close()
 
         pending = article_ids
         for _round in range(5):
@@ -261,5 +267,5 @@ class BlogEngine:
                 time.sleep(1)
             _progress("like", f"已点赞 {success} 篇，待重试 {len(pending)}", done=success + failed, total_count=total)
         failed += len(pending)  # 重试满轮仍未成功的，最终计入一次失败
-        _progress("done", f"点赞完成：成功 {success}，失败 {failed}，跳过 {skipped}")
+        _progress("done", f"点赞完成：成功 {success}，失败 {failed}，跳过 {skipped}", done=success + failed, total_count=total)
         return {"total": total, "success": success, "failed": failed, "skipped": skipped}
