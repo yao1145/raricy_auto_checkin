@@ -11,11 +11,23 @@ pip install -r backend/requirements.txt
 # Start the system (Flask + APScheduler)
 python run.py                  # default port 5000, auto-opens browser
 python run.py --port 8080      # custom port
+python run.py --host 0.0.0.0   # bind address (default 127.0.0.1)
 python run.py --debug          # Flask debug mode (hot reload; use_reloader stays off)
 python run.py --no-browser     # skip opening browser
+
+# One-click desktop launch: desktop shortcut -> start_checkin.bat -> launcher.py -> run.py
+python launcher.py             # health-checks http://127.0.0.1:5000/api/health, starts the
+                               # server if down, otherwise just opens the panel
 ```
 
 There are no tests, linters, or build steps in this project.
+
+### Windows-specific pitfalls
+
+- `start_checkin.bat` must stay **pure ASCII**. Chinese characters get mangled by cmd's GBK codepage, so the bat contains only English text and `%~dp0` (no hardcoded path).
+- The bat sets `PYTHONIOENCODING=utf-8` because run.py's emoji banner raises `UnicodeEncodeError` when stdout is redirected. Keep this env var if you touch the launcher.
+- No real local paths (e.g. `D:\Study\...`) appear in committed files — README uses placeholders, the bat uses `%~dp0`. Keep it that way.
+- The `一键打卡.lnk` shortcut is created manually on the desktop (PowerShell `WScript.Shell`), not in the repo.
 
 ## Architecture
 
@@ -46,7 +58,9 @@ This is an automated check-in (打卡) system for raricy.com — a Flask web ser
 
 ## Multi-account support
 
-Each account in `config.json` `accounts` array has `username`, `password`, `enabled`. The `selectors` and `fortune` config sections are legacy and no longer used — all page interaction is via the HTTP API paths in the `api` config section. Only `fortune.enabled` and `fortune.card_index` are still read by the engine.
+Accounts live in `backend/accounts.json` (gitignored — passwords are never committed), as an array of `{username, password, enabled}`. `load_config()` in `checkin.py` reads `config.json`, then overwrites `config["accounts"]` from `accounts.json`; if `accounts.json` is missing it falls back to a legacy `accounts` array embedded in `config.json`. Writes go the opposite way: `save_config()` in `app.py` pops `accounts` out of the config and routes them to `save_accounts()`. Accounts with `enabled: false` are skipped.
+
+The `selectors` and most of `fortune` config sections are legacy and no longer used — all page interaction is via the HTTP API paths in the `api` config section. Only `fortune.enabled` and `fortune.card_index` are still read by the engine.
 
 ## API endpoints added
 
@@ -61,3 +75,8 @@ Each account in `config.json` `accounts` array has `username`, `password`, `enab
 - Fortune column shows result value (e.g. "大吉") not card index
 - Account chips above the checkin button control which accounts are selected
 - Progress polling runs every 500ms via `setInterval`, rendering step icons (● login → ✓ logged in → ● checking → ✓ done)
+
+## Adjacent directories (not part of the check-in system)
+
+- `like_bot/` — a separate, standalone Selenium-based auto-like bot for the same site (uses Selenium/ChromeDriver, the opposite of this project's pure-`requests` design). Present only in the working tree, not committed. Don't confuse it with the check-in engine or fold its dependencies into `backend/requirements.txt`.
+- `raricy/` — downloaded HTML snapshots of raricy.com pages (login/checkin/blog/article/index) kept for reference when inspecting the site's markup. Not served or executed.
