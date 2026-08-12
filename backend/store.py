@@ -214,3 +214,27 @@ def get_likes_for_articles(article_ids: list[str]) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+
+def has_liked(article_id: str, account: str) -> bool:
+    """该账号是否已成功点赞过这篇文章"""
+    conn = _conn()
+    try:
+        cur = conn.execute(
+            "SELECT 1 FROM likes WHERE article_id=? AND account=? AND success=1 LIMIT 1",
+            (article_id, account),
+        )
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def clear_all() -> None:
+    """清空文章与点赞记录"""
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM likes")
+        conn.execute("DELETE FROM articles")
+        conn.commit()
+    finally:
+        conn.close()
