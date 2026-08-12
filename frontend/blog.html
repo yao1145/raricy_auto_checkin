@@ -734,6 +734,15 @@ function setControlsDisabled(disabled) {
 // ── 任务进度 ─────────────────────────────────────────────
 let _pollTimer = null;
 
+const POLL_MAX_MS = 600000; // 10 分钟：进度轮询最长时间，防止任务挂死时无限轮询
+
+// 终止进度轮询并恢复按钮状态
+function stopPoll(which, errorMsg) {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  _endTask(which);
+  if (errorMsg) toast(errorMsg, "error");
+}
+
 function renderProgressSteps(steps) {
   // 博客任务步骤 → 显示文案（与打卡页风格一致）
   const STEP_LABELS = {
@@ -808,15 +817,20 @@ function renderProgressBar(done, total) {
   return `<div style="font-family:monospace;font-size:12px;margin:8px 0;white-space:pre;">[${barStr}]${pct}</div>`;
 }
 
-function pollProgress(task_id, onDone) {
+function pollProgress(which, task_id, onDone) {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   const progressCard = document.getElementById("progressCard");
   const progressDiv = document.getElementById("progress");
   progressCard.style.display = "";
   progressDiv.innerHTML = renderProgressSteps([]);
 
+  const started = Date.now();
   _pollTimer = setInterval(async () => {
     try {
+      if (Date.now() - started > POLL_MAX_MS) {
+        stopPoll(which, "任务超时，已停止轮询");
+        return;
+      }
       const p = await API.get(`/api/blog/progress/${task_id}`);
       const bar = renderProgressBar(p.done_count, p.total_count);
       progressDiv.innerHTML = renderProgressSteps(p.steps || []) + bar;
@@ -826,7 +840,8 @@ function pollProgress(task_id, onDone) {
         onDone(p.results || {});
       }
     } catch (e) {
-      // 轮询失败忽略，继续重试（与打卡页行为一致）
+      // 404 / 连接失败：任务可能已失效，终止轮询而非无限重试
+      stopPoll(which, "任务已失效或服务不可用，已停止轮询");
     }
   }, 500);
 }
@@ -875,7 +890,7 @@ async function scanDirectory() {
   _startTask("scan");
   try {
     const { task_id } = await API.post("/api/blog/scan", {});
-    pollProgress(task_id, (results) => {
+    pollProgress("scan", task_id, (results) => {
       _endTask("scan");
       showResult(results);
       if (results.error) {
@@ -902,7 +917,7 @@ async function fetchSelected() {
   _startTask("fetch");
   try {
     const { task_id } = await API.post("/api/blog/fetch", { article_ids: ids });
-    pollProgress(task_id, (results) => {
+    pollProgress("fetch", task_id, (results) => {
       _endTask("fetch");
       showResult(results);
       if (results.error) {
@@ -936,7 +951,7 @@ async function likeSelected() {
       article_ids: ids,
       account: selectedAccount,
     });
-    pollProgress(task_id, (results) => {
+    pollProgress("like", task_id, (results) => {
       _endTask("like");
       showResult(results);
       if (results.error) {

@@ -598,6 +598,23 @@ async function refreshStatus() {
 // ── 手动打卡（异步 + 进度动画）─────────────────────────
 let _pollTimer = null;
 
+const POLL_MAX_MS = 600000; // 10 分钟：进度轮询最长时间，防止任务挂死时无限轮询
+
+// 终止进度轮询并恢复按钮状态
+function stopCheckinPoll(errorMsg) {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  const btn = document.getElementById("checkinBtn");
+  const batchBtn = document.getElementById("batchCheckinBtn");
+  btn.disabled = false;
+  if (batchBtn) batchBtn.disabled = false;
+  btn.innerHTML = "🖐 打卡所选";
+  if (errorMsg) {
+    const resultDiv = document.getElementById("checkinResult");
+    if (resultDiv) resultDiv.innerHTML = `<span style="color:var(--red);">${errorMsg}</span>`;
+    toast(errorMsg, "error");
+  }
+}
+
 function renderProgressSteps(steps, currentAccount, accountIndex, totalAccounts) {
   // Map backend step keys to display labels
   const STEP_LABELS = {
@@ -671,8 +688,13 @@ async function manualCheckin() {
     const { task_id } = await API.post("/api/checkin", { accounts });
 
     // 2. Poll for progress
+    const started = Date.now();
     _pollTimer = setInterval(async () => {
       try {
+        if (Date.now() - started > POLL_MAX_MS) {
+          stopCheckinPoll("任务超时，已停止轮询");
+          return;
+        }
         const progress = await API.get(`/api/checkin/progress/${task_id}`);
 
         // Update progress animation
@@ -710,7 +732,8 @@ async function manualCheckin() {
           refreshAll();
         }
       } catch (e) {
-        // Poll error — ignore, will retry
+        // 404 / 连接失败：任务可能已失效，终止轮询而非无限重试
+        stopCheckinPoll("任务已失效或服务不可用，已停止轮询");
       }
     }, 500);
 
