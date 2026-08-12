@@ -178,6 +178,9 @@ class BlogEngine:
                     return False, article_id, True
                 except requests.RequestException:
                     return False, article_id, False
+                except ValueError:
+                    # JSON 解析/UTF-8 解码失败：单篇降级为不可重试失败，不中断整批
+                    return False, article_id, False
                 except sqlite3.Error:
                     # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
                     return False, article_id, False
