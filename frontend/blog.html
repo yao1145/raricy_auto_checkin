@@ -524,6 +524,7 @@ function applyFilters() {
     minLikes: document.getElementById("filterMinLikes").value,
     status: document.getElementById("filterStatus").value,
   };
+  loadedAll = false;  // 筛选触发全新分页加载，退出「加载全部」视图
   loadArticles(true);
 }
 
@@ -537,6 +538,7 @@ function setSort(key) {
     sortState.dir = "asc";
   }
   updateSortIndicators();
+  loadedAll = false;  // 排序触发全新分页加载，退出「加载全部」视图
   loadArticles(true);
 }
 
@@ -695,6 +697,7 @@ document.querySelector(".table-wrap").addEventListener("scroll", function() {
 // ── 操作按钮状态 ─────────────────────────────────────────
 let _running = false;
 let loadingAll = false;   // 「加载全部」进行中：禁用操作/筛选/排序并抑制滚动
+let loadedAll = false;    // 当前视图为「加载全部」：30s 自动刷新保持该视图原地刷新
 const BTN_LABELS = { scan: "🔄 扫描目录", fetch: "⬇ 抓取内容", like: "👍 点赞所选" };
 
 function updateActionButtons() {
@@ -982,6 +985,7 @@ async function loadAll() {
     articles = data.articles; likes = data.likes; totalArticles = data.total;
     hasMore = false;  // 加载全部后不再无限滚动
     selectedIds.clear();  // 旧勾选指向的 id 已不在表中，避免残留勾选
+    loadedAll = true;  // 当前视图为「加载全部」，自动刷新时保持原地刷新
     renderArticlesTable();
     toast(`已加载全部 ${totalArticles} 篇`);
   } catch (e) {
@@ -1017,7 +1021,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // 每 30 秒自动刷新文章列表（任务进行中跳过，避免覆盖进度）
   setInterval(() => {
     if (_running || loadingAll) return;
-    loadArticles();
+    if (loadedAll) {
+      loadAll();      // 保持「加载全部」视图，原地刷新全部
+    } else {
+      loadArticles(); // 普通分页视图，刷新当前页
+    }
   }, 30000);
 });
 </script>
