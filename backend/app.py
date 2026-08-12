@@ -271,12 +271,6 @@ def blog_scan():
 
     def _run():
         engine = BlogEngine()
-        # 扫描需要已认证 session 才能拿到完整列表
-        accounts = get_enabled_accounts()
-        if not accounts:
-            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "没有启用的账号"}})
-            return
-        engine.login(accounts[0]["username"], accounts[0]["password"])
 
         def cb(step, msg):
             data = progress.get_progress(task_id) or {}
@@ -284,9 +278,19 @@ def blog_scan():
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
             progress.store_progress(task_id, data)
 
-        results = engine.scan_directory(progress_cb=cb)
-        progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
-        engine.clear_session()
+        try:
+            # 扫描需要已认证 session 才能拿到完整列表
+            accounts = get_enabled_accounts()
+            if not accounts:
+                progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "没有启用的账号"}})
+                return
+            engine.login(accounts[0]["username"], accounts[0]["password"])
+            results = engine.scan_directory(progress_cb=cb)
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
+        except Exception as e:
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": str(e)}})
+        finally:
+            engine.clear_session()
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"task_id": task_id}), 202
@@ -302,11 +306,6 @@ def blog_fetch():
 
     def _run():
         engine = BlogEngine()
-        accounts = get_enabled_accounts()
-        if not accounts:
-            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "没有启用的账号"}})
-            return
-        engine.login(accounts[0]["username"], accounts[0]["password"])
 
         def cb(step, msg):
             data = progress.get_progress(task_id) or {}
@@ -314,9 +313,18 @@ def blog_fetch():
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
             progress.store_progress(task_id, data)
 
-        results = engine.fetch_contents(article_ids, progress_cb=cb)
-        progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
-        engine.clear_session()
+        try:
+            accounts = get_enabled_accounts()
+            if not accounts:
+                progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "没有启用的账号"}})
+                return
+            engine.login(accounts[0]["username"], accounts[0]["password"])
+            results = engine.fetch_contents(article_ids, progress_cb=cb)
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
+        except Exception as e:
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": str(e)}})
+        finally:
+            engine.clear_session()
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"task_id": task_id}), 202
@@ -333,11 +341,6 @@ def blog_like():
 
     def _run():
         engine = BlogEngine()
-        accounts = get_enabled_accounts()
-        target = next((a for a in accounts if a["username"] == account), None)
-        if not target:
-            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "账号不存在或未启用"}})
-            return
 
         def cb(step, msg):
             data = progress.get_progress(task_id) or {}
@@ -345,8 +348,18 @@ def blog_like():
             data["steps"].append({"step": step, "message": msg, "time": datetime.now().strftime("%H:%M:%S")})
             progress.store_progress(task_id, data)
 
-        results = engine.like_articles(article_ids, target["username"], target["password"], progress_cb=cb)
-        progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
+        try:
+            accounts = get_enabled_accounts()
+            target = next((a for a in accounts if a["username"] == account), None)
+            if not target:
+                progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "账号不存在或未启用"}})
+                return
+            results = engine.like_articles(article_ids, target["username"], target["password"], progress_cb=cb)
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
+        except Exception as e:
+            progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": str(e)}})
+        finally:
+            engine.clear_session()
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"task_id": task_id}), 202
