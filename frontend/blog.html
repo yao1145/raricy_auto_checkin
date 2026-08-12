@@ -437,7 +437,8 @@ function renderAccountChips() {
   }
   container.innerHTML = allAccounts.map(a => {
     const sel = a.username === selectedAccount ? " selected" : "";
-    return `<span class="account-chip${sel}" onclick="selectAccount('${escapeHtml(a.username)}')" title="点击选择点赞账号">
+    // 用 data-username 携带数据，由委托监听器处理（避免内联 onclick 的引号注入/XSS）
+    return `<span class="account-chip${sel}" data-username="${escapeHtml(a.username)}" title="点击选择点赞账号">
       ${escapeHtml(a.username)}
     </span>`;
   }).join("");
@@ -450,6 +451,7 @@ function selectAccount(username) {
 
 // ── 文章列表 ─────────────────────────────────────────────
 let selectedIds = new Set();  // 勾选的文章 id
+let _viewBtnListenerAttached = false;  // 「查看」委托监听器只挂载一次
 
 // ── 筛选 / 排序 / 分页状态 ───────────────────────────────
 let filters = { author: "", category: "", minLikes: null, status: "" };
@@ -585,8 +587,9 @@ function renderArticlesTable() {
       : '<span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-dim);">未抓取</span>';
 
     // 内容状态列：已抓取 → 徽章 + 查看按钮；未抓取 → 仅徽章
+    // 查看按钮用 data-* 属性携带数据，由委托监听器处理（避免内联 onclick 的引号注入/XSS）
     const statusCell = contentFetched
-      ? contentBadge + ` <button class="btn btn-ghost btn-sm" onclick="viewContent('${escapeHtml(id)}', '${escapeHtml(a.title)}')">查看</button>`
+      ? contentBadge + ` <button class="btn btn-ghost btn-sm view-btn" data-id="${escapeHtml(id)}" data-title="${escapeHtml(a.title)}">查看</button>`
       : contentBadge;
 
     // 点赞列：站点点赞数 + 本地点赞记录（tooltip）
@@ -615,6 +618,18 @@ function renderArticlesTable() {
 
   updateActionButtons();
   updateSortIndicators();
+
+  // 委托处理「查看」按钮（避免内联 onclick 的引号注入/XSS），只挂载一次
+  if (!_viewBtnListenerAttached) {
+    _viewBtnListenerAttached = true;
+    tbody.addEventListener("click", function(e) {
+      const btn = e.target.closest(".view-btn");
+      if (!btn) return;
+      const id = btn.getAttribute("data-id");
+      const title = btn.getAttribute("data-title") || "";
+      viewContent(id, title);
+    });
+  }
 }
 
 // ── 勾选状态 ──────────────────────────────────────────────
@@ -657,6 +672,13 @@ function closeContentModal() {
 // 点击遮罩关闭
 document.getElementById("contentModal").addEventListener("click", function(e) {
   if (e.target === this) closeContentModal();
+});
+
+// 委托处理账号 chip 选择（避免内联 onclick 的引号注入/XSS）
+document.getElementById("accountChips").addEventListener("click", function(e) {
+  const chip = e.target.closest(".account-chip");
+  if (!chip) return;
+  selectAccount(chip.getAttribute("data-username"));
 });
 
 // ── 无限滚动 ─────────────────────────────────────────────
