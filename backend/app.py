@@ -341,6 +341,7 @@ def blog_scan():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
+        progress.watchdog(task_id, 900)  # 15 分钟看门狗，防止线程挂死
         def cb(step, msg, done=None, total=None):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
@@ -381,6 +382,7 @@ def blog_fetch():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
+        progress.watchdog(task_id, 900)  # 15 分钟看门狗，防止线程挂死
         def cb(step, msg, done=None, total=None):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
@@ -421,6 +423,7 @@ def blog_like():
     progress.store_progress(task_id, {"status": "pending", "steps": [], "results": {}, "done": False})
 
     def _run():
+        progress.watchdog(task_id, 900)  # 15 分钟看门狗，防止线程挂死
         def cb(step, msg, done=None, total=None):
             data = progress.get_progress(task_id) or {}
             data["current_step"] = step
