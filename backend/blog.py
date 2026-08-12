@@ -106,7 +106,7 @@ class BlogEngine:
                         "author": author_el.get_text(strip=True) if author_el else "",
                         "category": category_el.get_text(strip=True) if category_el else "",
                         "description": desc_el.get_text(strip=True) if desc_el else "",
-                        "likes_count": int(re.sub(r"\D", "", likes_el.get_text())) if likes_el else 0,
+                        "likes_count": int(re.sub(r"\D", "", likes_el.get_text() or "0") or "0") if likes_el else 0,
                     })
                 # 先查已存在的 id，再统计本次真正新增的行数
                 existing_ids = {a["id"] for a in store.get_articles_by_ids([r["id"] for r in rows])}
@@ -125,6 +125,8 @@ class BlogEngine:
 
     # ── 内容抓取 ──────────────────────────────────────────
     def fetch_contents(self, article_ids, progress_cb=None):
+        if not article_ids:
+            return {"total": 0, "success": 0, "failed": 0}
         if self._session is None:
             raise ValueError("未登录：请先调用 login()")
 
@@ -135,8 +137,6 @@ class BlogEngine:
                 except Exception:
                     pass
 
-        if not article_ids:
-            return {"total": 0, "success": 0, "failed": 0}
         base = self._api_url("blog_content_path", "/blog/spider/blogs")
         total = len(article_ids)
         success = failed = 0
@@ -172,14 +172,15 @@ class BlogEngine:
                     ok, aid, retryable = fut.result()
                     if ok:
                         success += 1
+                    elif retryable:
+                        retry.append(aid)  # 先不计入失败，重试后再定
                     else:
                         failed += 1
-                        if retryable:
-                            retry.append(aid)
             pending = retry
             if pending:
                 time.sleep(1)
             _progress("fetch", f"已抓取 {success} 篇，待重试 {len(pending)}")
+        failed += len(pending)  # 重试满轮仍未成功的，最终计入一次失败
         _progress("done", f"抓取完成：成功 {success}，失败 {failed}")
         return {"total": total, "success": success, "failed": failed}
 
@@ -225,13 +226,14 @@ class BlogEngine:
                     ok, aid, retryable = fut.result()
                     if ok:
                         success += 1
+                    elif retryable:
+                        retry.append(aid)  # 先不计入失败，重试后再定
                     else:
                         failed += 1
-                        if retryable:
-                            retry.append(aid)
             pending = retry
             if pending:
                 time.sleep(1)
             _progress("like", f"已点赞 {success} 篇，待重试 {len(pending)}")
+        failed += len(pending)  # 重试满轮仍未成功的，最终计入一次失败
         _progress("done", f"点赞完成：成功 {success}，失败 {failed}")
         return {"total": total, "success": success, "failed": failed}
