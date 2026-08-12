@@ -259,8 +259,50 @@ def blog_index():
 
 @app.route("/api/blog/articles")
 def blog_articles():
-    """返回已扫描的文章与点赞记录"""
-    return jsonify({"articles": store.list_articles(), "likes": store.list_likes()})
+    """分页 + 服务端筛选 + 排序的文章列表"""
+    args = request.args
+    author = args.get("author", "").strip() or None
+    category = args.get("category", "").strip() or None
+    min_likes = args.get("min_likes", type=int)
+    status = args.get("status", "").strip() or None
+    if status not in (None, "fetched", "unfetched"):
+        status = None
+    sort = args.get("sort", "").strip() or None
+    order = args.get("order", "asc").strip().lower()
+    if order not in ("asc", "desc"):
+        order = "asc"
+    page = max(1, args.get("page", 1, type=int))
+    page_size = min(200, max(1, args.get("page_size", 50, type=int)))
+
+    offset = (page - 1) * page_size
+    rows, total = store.query_articles(
+        author=author, category=category, min_likes=min_likes, status=status,
+        sort=sort, order=order, offset=offset, limit=page_size,
+    )
+    likes = store.get_likes_for_articles([r["id"] for r in rows])
+    has_more = offset + len(rows) < total
+    return jsonify({
+        "articles": rows, "likes": likes, "total": total,
+        "page": page, "page_size": page_size, "has_more": has_more,
+    })
+
+
+@app.route("/api/blog/meta")
+def blog_meta():
+    """作者/分类下拉选项"""
+    return jsonify({
+        "authors": store.list_distinct_authors(),
+        "categories": store.list_distinct_categories(),
+    })
+
+
+@app.route("/api/blog/article/<article_id>")
+def blog_article_detail(article_id):
+    """单篇详情（含 content，供查看弹窗）"""
+    rows = store.get_articles_by_ids([article_id])
+    if not rows:
+        return jsonify({"error": "文章不存在"}), 404
+    return jsonify(rows[0])
 
 
 @app.route("/api/blog/scan", methods=["POST"])
