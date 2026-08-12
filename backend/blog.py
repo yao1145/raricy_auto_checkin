@@ -63,10 +63,10 @@ class BlogEngine:
         if self._session is None:
             raise ValueError("未登录：请先调用 login()")
 
-        def _progress(step, msg):
+        def _progress(step, msg, done=None, total_count=None):
             if progress_cb:
                 try:
-                    progress_cb(step, msg)
+                    progress_cb(step, msg, done=done, total=total_count)
                 except Exception:
                     pass
 
@@ -122,7 +122,7 @@ class BlogEngine:
                 store.upsert_articles(rows)
                 total += len(rows)
                 new += sum(1 for r in rows if r["id"] not in existing_ids)
-                _progress("scan", f"第 {page} 页，已收录 {total} 篇")
+                _progress("scan", f"第 {page} 页，已收录 {total} 篇", done=total, total_count=None)
                 consecutive_errors = 0  # 成功读取一页即清零连续错误计数
                 page += 1
             except requests.RequestException as e:
@@ -146,10 +146,10 @@ class BlogEngine:
         if self._session is None:
             raise ValueError("未登录：请先调用 login()")
 
-        def _progress(step, msg):
+        def _progress(step, msg, done=None, total_count=None):
             if progress_cb:
                 try:
-                    progress_cb(step, msg)
+                    progress_cb(step, msg, done=done, total=total_count)
                 except Exception:
                     pass
 
@@ -198,29 +198,31 @@ class BlogEngine:
             pending = retry
             if pending:
                 time.sleep(1)
-            _progress("fetch", f"已抓取 {success} 篇，待重试 {len(pending)}")
+            _progress("fetch", f"已抓取 {success} 篇，待重试 {len(pending)}", done=success + failed, total_count=total)
         failed += len(pending)  # 重试满轮仍未成功的，最终计入一次失败
         _progress("done", f"抓取完成：成功 {success}，失败 {failed}")
         return {"total": total, "success": success, "failed": failed}
 
     # ── 批量点赞 ──────────────────────────────────────────
     def like_articles(self, article_ids, username, password, progress_cb=None):
-        def _progress(step, msg):
+        def _progress(step, msg, done=None, total_count=None):
             if progress_cb:
                 try:
-                    progress_cb(step, msg)
+                    progress_cb(step, msg, done=done, total=total_count)
                 except Exception:
                     pass
 
         if not article_ids:
-            return {"total": 0, "success": 0, "failed": 0}
+            return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
         self.login(username, password)
         base = self._api_url("blog_like_path", "/blog")
         total = len(article_ids)
-        success = failed = 0
+        success = failed = skipped = 0
         _progress("like", f"开始为 {total} 篇点赞...")
 
         def _like_one(article_id):
+            if store.has_liked(article_id, username):
+                return "skipped", article_id, False
             s = self._worker_session()
             url = f"{base}/{article_id}/like"
             headers = {"Referer": urljoin(get_api_base(self.config), f"/blog/{article_id}")}
@@ -245,8 +247,10 @@ class BlogEngine:
             with ThreadPoolExecutor(max_workers=20) as ex:
                 futs = {ex.submit(_like_one, i): i for i in pending}
                 for fut in as_completed(futs):
-                    ok, aid, retryable = fut.result()
-                    if ok:
+                    status, aid, retryable = fut.result()
+                    if status == "skipped":
+                        skipped += 1
+                    elif status is True:
                         success += 1
                     elif retryable:
                         retry.append(aid)  # 先不计入失败，重试后再定
@@ -255,7 +259,7 @@ class BlogEngine:
             pending = retry
             if pending:
                 time.sleep(1)
-            _progress("like", f"已点赞 {success} 篇，待重试 {len(pending)}")
+            _progress("like", f"已点赞 {success} 篇，待重试 {len(pending)}", done=success + failed, total_count=total)
         failed += len(pending)  # 重试满轮仍未成功的，最终计入一次失败
-        _progress("done", f"点赞完成：成功 {success}，失败 {failed}")
-        return {"total": total, "success": success, "failed": failed}
+        _progress("done", f"点赞完成：成功 {success}，失败 {failed}，跳过 {skipped}")
+        return {"total": total, "success": success, "failed": failed, "skipped": skipped}
