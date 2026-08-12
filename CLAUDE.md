@@ -36,6 +36,8 @@ This is an automated check-in (打卡) system for raricy.com — a Flask web ser
 **Data flow (check-in cycle):**
 `APScheduler cron tick` or `POST /api/checkin` (async) → `CheckinEngine.execute()` → `requests.Session` POST `/auth/login` → POST `/checkin/api/do-checkin` → optionally POST `/checkin/api/claim-fortune` → write JSON log entry
 
+> A `BlogEngine` (`backend/blog.py`) shares the same `requests` login (`backend/client.py`) and adds blog directory scanning (beautifulsoup4), content fetch, and batch like, persisted to SQLite (`runtime/blog.db`) via `backend/store.py`. Blog ops are async with task_id progress like check-in.
+
 **Key architectural decisions:**
 
 - **Pure requests, no browser.** Login is a form POST to `/auth/login` with `username` + `password` (tries form-data first, falls back to JSON). Login verification checks whether accessing the checkin URL redirects to `/auth/login`. The authenticated `requests.Session` is reused for the checkin API call. This eliminates Chrome/ChromeDriver version management entirely.
@@ -78,5 +80,5 @@ The `selectors` and most of `fortune` config sections are legacy and no longer u
 
 ## Adjacent directories (not part of the check-in system)
 
-- `like_bot/` — a separate, standalone Selenium-based auto-like bot for the same site (uses Selenium/ChromeDriver, the opposite of this project's pure-`requests` design). Present only in the working tree, not committed. Don't confuse it with the check-in engine or fold its dependencies into `backend/requirements.txt`.
+- `like_bot/` — was a standalone Selenium-based auto-like bot for the same site (Selenium/ChromeDriver, the opposite of this project's pure-`requests` design). Its blog features are now integrated into the backend as `backend/blog.py` + `backend/store.py` (beautifulsoup4, not Selenium); the standalone scripts remain uncommitted reference material. Don't mistake the old scripts for the integrated module, and don't add Selenium to `backend/requirements.txt`.
 - `raricy/` — downloaded HTML snapshots of raricy.com pages (login/checkin/blog/article/index) kept for reference when inspecting the site's markup. Not served or executed.

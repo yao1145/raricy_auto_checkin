@@ -18,6 +18,7 @@
 - ⚙ **高度可配置** — URL、API 路径、定时规则通过 `config.json` 管理，账号通过 `accounts.json` 管理
 - 📡 **实时进度** — 打卡过程实时显示"正在登录 → 登录成功 → 正在打卡 → 打卡成功"步骤动画
 - 🖱 **一键打卡** — 桌面快捷方式一键启动系统（详见使用指南）
+- 📚 **博客工具** — 目录扫描 / 内容抓取 / 批量点赞，纯 requests + SQLite 存储
 
 ### 1.3 技术架构
 
@@ -225,6 +226,12 @@ python run.py
 | `GET`  | `/api/status`                     | 今日各账号打卡状态 + 下次定时时间  |
 | `POST` | `/api/checkin`                    | 手动触发打卡（异步，返回 task_id） |
 | `GET`  | `/api/checkin/progress/<task_id>` | 轮询打卡进度                       |
+| `GET`  | `/blog`                           | 返回博客工具页面                    |
+| `POST` | `/api/blog/scan`                  | 扫描博客目录（异步，返回 task_id） |
+| `POST` | `/api/blog/fetch`                 | 抓取文章内容（异步，body: article_ids） |
+| `POST` | `/api/blog/like`                  | 批量点赞（异步，body: article_ids + account） |
+| `GET`  | `/api/blog/progress/<task_id>`    | 轮询博客任务进度                    |
+| `GET`  | `/api/blog/articles`              | 博客文章与点赞记录列表               |
 | `GET`  | `/api/logs?limit=50`              | 打卡历史记录                       |
 | `GET`  | `/api/accounts`                   | 获取所有账号列表（密码脱敏）       |
 | `POST` | `/api/accounts`                   | 更新账号列表（写入 accounts.json） |
