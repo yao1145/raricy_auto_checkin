@@ -360,6 +360,8 @@ body {
 .btn-primary:hover:not(:disabled) { background: var(--cyan-bright); border-color: var(--cyan-bright); }
 .btn-success { background: var(--green); color: #061b13; border-color: var(--green); }
 .btn-success:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-violet { background: var(--violet); color: #fff; border-color: var(--violet); }
+.btn-violet:hover:not(:disabled) { background: #7c3aed; border-color: #7c3aed; }
 .btn-danger { background: transparent; color: var(--red); border-color: var(--red); }
 .btn-danger:hover:not(:disabled) { background: var(--red-bg); }
 .btn-ghost {

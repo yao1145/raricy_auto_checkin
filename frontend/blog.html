@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>博客工具 · raricy.com</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/ico" href="favicon.ico">
 </head>
 <body>
 <canvas id="space-bg" aria-hidden="true"></canvas>
@@ -45,9 +46,8 @@
 
     <div class="btn-row" style="justify-content:center;">
       <button class="btn btn-primary" id="scanBtn" onclick="scanDirectory()">扫描目录</button>
-      <button class="btn btn-ghost" id="fetchBtn" onclick="fetchSelected()" disabled>抓取内容</button>
+      <button class="btn btn-violet" id="fetchBtn" onclick="fetchSelected()" disabled>抓取内容</button>
       <button class="btn btn-success" id="likeBtn" onclick="likeSelected()" disabled>点赞所选</button>
-      <a class="btn btn-ghost" href="/checkin" style="text-decoration:none;">返回打卡</a>
     </div>
     <div style="text-align:center;margin-top:8px;">
       <span id="selectedCount" style="font-size:11px;color:var(--text-dim);"></span>

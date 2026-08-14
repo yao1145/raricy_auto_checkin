@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>系统配置 · raricy.com</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/ico" href="favicon.ico">
 </head>
 <body>
 <canvas id="space-bg" aria-hidden="true"></canvas>
@@ -31,22 +32,6 @@
     <p class="page-sub">账号 · 站点 · API · 定时</p>
   </header>
 
-  <!-- 站点设置 -->
-  <section class="card">
-    <div class="card-title">站点设置</div>
-    <fieldset>
-      <legend>站点 URL</legend>
-      <div class="form-group">
-        <label for="cfg_login_url">登录页 URL</label>
-        <input type="text" id="cfg_login_url" placeholder="https://raricy.com/login">
-      </div>
-      <div class="form-group">
-        <label for="cfg_checkin_url">打卡页 URL</label>
-        <input type="text" id="cfg_checkin_url" placeholder="https://raricy.com/checkin">
-      </div>
-    </fieldset>
-  </section>
-
   <!-- 账号管理 -->
   <section class="card">
     <div class="card-title">账号管理</div>
@@ -62,6 +47,22 @@
           <input type="password" id="newAccountPassword" placeholder="密码" style="flex:1;">
           <button class="btn btn-primary btn-sm" onclick="addAccount()" style="flex:0 0 auto;">添加账号</button>
         </div>
+      </div>
+    </fieldset>
+  </section>
+
+  <!-- 站点设置 -->
+  <section class="card">
+    <div class="card-title">站点设置</div>
+    <fieldset>
+      <legend>站点 URL</legend>
+      <div class="form-group">
+        <label for="cfg_login_url">登录页 URL</label>
+        <input type="text" id="cfg_login_url" placeholder="https://raricy.com/login">
+      </div>
+      <div class="form-group">
+        <label for="cfg_checkin_url">打卡页 URL</label>
+        <input type="text" id="cfg_checkin_url" placeholder="https://raricy.com/checkin">
       </div>
     </fieldset>
   </section>
@@ -98,6 +99,28 @@
         </div>
       </div>
     </fieldset>
+  </section>
+
+  <!-- 定时设置 -->
+  <section class="card">
+    <div class="card-title">定时设置</div>
+    <div class="form-group">
+      <label>
+        <input type="checkbox" id="scheduleEnabled" onchange="toggleSchedule()" style="width:auto;">
+        启用定时打卡
+      </label>
+    </div>
+    <div class="form-group">
+      <label>当前定时时间</label>
+      <div id="timeTags" style="min-height:32px; padding:4px 0;"></div>
+    </div>
+    <div class="form-group">
+      <label>添加新时间</label>
+      <div class="form-row">
+        <input type="time" id="newTime" value="09:00" style="flex:2;">
+        <button class="btn btn-primary btn-sm" onclick="addTime()" style="flex:1;">添加</button>
+      </div>
+    </div>
   </section>
 
   <!-- 运势卡片 -->
@@ -168,29 +191,19 @@
         <label for="cfg_fortune_path">运势 API 路径</label>
         <input type="text" id="cfg_fortune_path" placeholder="/checkin/api/claim-fortune">
       </div>
-    </fieldset>
-  </section>
-
-  <!-- 定时设置 -->
-  <section class="card">
-    <div class="card-title">定时设置</div>
-    <div class="form-group">
-      <label>
-        <input type="checkbox" id="scheduleEnabled" onchange="toggleSchedule()" style="width:auto;">
-        启用定时打卡
-      </label>
-    </div>
-    <div class="form-group">
-      <label>当前定时时间</label>
-      <div id="timeTags" style="min-height:32px; padding:4px 0;"></div>
-    </div>
-    <div class="form-group">
-      <label>添加新时间</label>
-      <div class="form-row">
-        <input type="time" id="newTime" value="09:00" style="flex:2;">
-        <button class="btn btn-primary btn-sm" onclick="addTime()" style="flex:1;">添加</button>
+      <div class="form-group">
+        <label for="cfg_blog_listing_path">博客列表 API 路径</label>
+        <input type="text" id="cfg_blog_listing_path" placeholder="/blog">
       </div>
-    </div>
+      <div class="form-group">
+        <label for="cfg_blog_content_path">博客内容 API 路径</label>
+        <input type="text" id="cfg_blog_content_path" placeholder="/blog/spider/blogs">
+      </div>
+      <div class="form-group">
+        <label for="cfg_blog_like_path">博客点赞 API 路径</label>
+        <input type="text" id="cfg_blog_like_path" placeholder="/blog">
+      </div>
+    </fieldset>
   </section>
 
   <!-- 保存 -->
@@ -324,6 +337,9 @@ async function loadConfig() {
     document.getElementById("cfg_login_path").value = config.api?.login_path || "/auth/login";
     document.getElementById("cfg_checkin_path").value = config.api?.checkin_path || "/checkin/api/do-checkin";
     document.getElementById("cfg_fortune_path").value = config.api?.fortune_path || "/checkin/api/claim-fortune";
+    document.getElementById("cfg_blog_listing_path").value = config.api?.blog_listing_path || "/blog";
+    document.getElementById("cfg_blog_content_path").value = config.api?.blog_content_path || "/blog/spider/blogs";
+    document.getElementById("cfg_blog_like_path").value = config.api?.blog_like_path || "/blog";
     // 运势卡片配置
     document.getElementById("cfg_fortune_enabled").checked = config.fortune?.enabled ?? true;
     document.getElementById("cfg_fortune_modal").value = config.fortune?.modal_selector || ".fortune-modal--open";
@@ -395,6 +411,9 @@ async function saveConfig() {
       login_path: get("cfg_login_path"),
       checkin_path: get("cfg_checkin_path"),
       fortune_path: get("cfg_fortune_path"),
+      blog_listing_path: get("cfg_blog_listing_path"),
+      blog_content_path: get("cfg_blog_content_path"),
+      blog_like_path: get("cfg_blog_like_path"),
     },
   };
 
