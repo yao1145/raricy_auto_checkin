@@ -250,6 +250,20 @@ def checkin_progress(task_id):
     return jsonify(progress)
 
 
+# ── 路由：打卡面板 ────────────────────────────────────────
+@app.route("/checkin")
+def checkin_index():
+    """返回打卡控制面板"""
+    return send_from_directory(str(FRONTEND_DIR), "checkin.html")
+
+
+# ── 路由：配置面板 ────────────────────────────────────────
+@app.route("/config")
+def config_index():
+    """返回配置面板"""
+    return send_from_directory(str(FRONTEND_DIR), "config.html")
+
+
 # ── 路由：博客管理 ────────────────────────────────────────
 @app.route("/blog")
 def blog_index():

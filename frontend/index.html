@@ -3,1139 +3,134 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>自动打卡系统 - raricy.com</title>
-<style>
-  :root {
-    --bg: #0f1117;
-    --card-bg: #1a1d27;
-    --border: #2a2d3a;
-    --text: #e1e4ed;
-    --text-dim: #8b8fa3;
-    --green: #2ecc71;
-    --green-bg: rgba(46, 204, 113, 0.12);
-    --red: #e74c3c;
-    --red-bg: rgba(231, 76, 60, 0.12);
-    --yellow: #f39c12;
-    --yellow-bg: rgba(243, 156, 18, 0.12);
-    --blue: #3498db;
-    --blue-bg: rgba(52, 152, 219, 0.12);
-    --radius: 10px;
-    --transition: 0.2s ease;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    line-height: 1.5;
-  }
-
-  .container { max-width: 960px; margin: 0 auto; padding: 24px 20px 60px; }
-
-  /* header */
-  .header {
-    text-align: center; margin-bottom: 28px;
-  }
-  .header h1 { font-size: 22px; font-weight: 600; }
-  .header .sub { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
-
-  /* cards */
-  .card {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px;
-    margin-bottom: 16px;
-  }
-  .card-title {
-    font-size: 13px; font-weight: 600; color: var(--text-dim);
-    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px;
-  }
-
-  /* grid layout */
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-
-  @media (max-width: 640px) {
-    .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  }
-
-  /* status panel */
-  .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .dot {
-    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-  }
-  .dot.on { background: var(--green); box-shadow: 0 0 8px rgba(46, 204, 113, 0.5); }
-  .dot.off { background: var(--red); box-shadow: 0 0 8px rgba(231, 76, 60, 0.5); }
-  .status-info { font-size: 13px; }
-  .status-info span { color: var(--text-dim); }
-
-  .stat-item { text-align: center; padding: 12px 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
-  .stat-icon { font-size: 24px; margin-bottom: 4px; }
-  .stat-value { font-size: 15px; font-weight: 600; }
-  .stat-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
-  .stat-time { font-size: 12px; color: var(--text-dim); }
-
-  /* badges */
-  .badge {
-    display: inline-block; padding: 3px 10px; border-radius: 12px;
-    font-size: 12px; font-weight: 600;
-  }
-  .badge-green { background: var(--green-bg); color: var(--green); }
-  .badge-red { background: var(--red-bg); color: var(--red); }
-  .badge-yellow { background: var(--yellow-bg); color: var(--yellow); }
-  .badge-blue { background: var(--blue-bg); color: var(--blue); }
-
-  /* buttons */
-  .btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 10px 20px; border-radius: 8px; border: 1px solid transparent;
-    font-size: 14px; font-weight: 600; cursor: pointer;
-    transition: all var(--transition);
-    font-family: inherit;
-  }
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
-  .btn-primary:hover:not(:disabled) { background: #2980b9; }
-  .btn-success { background: var(--green); color: #fff; }
-  .btn-success:hover:not(:disabled) { background: #27ae60; }
-  .btn-danger { background: transparent; color: var(--red); border-color: var(--red); }
-  .btn-danger:hover:not(:disabled) { background: var(--red-bg); }
-  .btn-ghost {
-    background: transparent; color: var(--text-dim); border-color: var(--border);
-  }
-  .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--text-dim); }
-  .btn-sm { padding: 6px 12px; font-size: 12px; }
-  .btn-lg { padding: 16px 32px; font-size: 16px; border-radius: 12px; }
-
-  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
-
-  /* forms */
-  label {
-    display: block; font-size: 12px; color: var(--text-dim);
-    font-weight: 600; margin-bottom: 4px; text-transform: uppercase;
-    letter-spacing: 0.4px;
-  }
-  input, select {
-    width: 100%; padding: 9px 12px; border-radius: 6px;
-    border: 1px solid var(--border); background: var(--bg);
-    color: var(--text); font-size: 13px; font-family: inherit;
-    transition: border-color var(--transition);
-  }
-  input:focus, select:focus { outline: none; border-color: var(--blue); }
-  .form-group { margin-bottom: 12px; }
-  .form-row { display: flex; gap: 10px; align-items: flex-end; }
-  .form-row > * { flex: 1; }
-  .form-hint { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
-
-  /* log table */
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 10px 12px; text-align: left; }
-  th { color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; }
-  td { border-top: 1px solid var(--border); }
-  tr:hover td { background: rgba(255,255,255,0.02); }
-  .empty-state { text-align: center; padding: 32px 0; color: var(--text-dim); font-size: 14px; }
-
-  /* modal */
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100;
-    display: none; align-items: center; justify-content: center; padding: 20px;
-  }
-  .modal-overlay.open { display: flex; }
-  .modal {
-    background: var(--card-bg); border: 1px solid var(--border);
-    border-radius: 14px; padding: 28px; width: 100%; max-width: 540px;
-    max-height: 85vh; overflow-y: auto;
-  }
-  .modal h2 { font-size: 17px; margin-bottom: 18px; }
-  .modal-close {
-    float: right; background: none; border: none; color: var(--text-dim);
-    font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px;
-  }
-  .modal-close:hover { color: var(--text); }
-
-  /* time tag */
-  .time-tag {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 6px 12px; background: var(--bg); border: 1px solid var(--border);
-    border-radius: 20px; font-size: 13px; margin: 2px 4px;
-  }
-  .time-tag button {
-    background: none; border: none; color: var(--red); cursor: pointer;
-    font-size: 14px; line-height: 1; padding: 0 2px;
-  }
-  .time-tag button:hover { color: #c0392b; }
-
-  /* toast */
-  .toast {
-    position: fixed; top: 20px; right: 20px; z-index: 200;
-    padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
-    animation: slideIn 0.3s ease; max-width: 380px;
-  }
-  .toast-success { background: var(--green); color: #fff; }
-  .toast-error { background: var(--red); color: #fff; }
-  @keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-
-  /* spinner */
-  .spinner {
-    display: inline-block; width: 16px; height: 16px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: #fff; border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* sections */
-  .section-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 14px;
-  }
-
-  /* account list */
-  .account-list { list-style: none; }
-  .account-item {
-    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
-    border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;
-    background: rgba(255,255,255,0.02);
-  }
-  .account-item .acct-name { flex: 1; font-size: 13px; font-weight: 600; }
-  .account-item .acct-status { font-size: 11px; }
-  .account-checkbox { width: auto !important; cursor: pointer; }
-  .account-select-row {
-    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-    margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.02);
-    border-radius: 8px;
-  }
-  .account-chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 4px 10px; border-radius: 14px; font-size: 12px;
-    border: 1px solid var(--border); cursor: pointer;
-    transition: all var(--transition); user-select: none;
-    background: var(--bg);
-  }
-  .account-chip.selected { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
-  .account-chip .chip-dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  }
-  .account-chip .chip-dot.checked { background: var(--green); }
-  .account-chip .chip-dot.unchecked { background: var(--red); }
-
-  /* progress steps */
-  .progress-steps { margin: 10px 0; }
-  .progress-step {
-    display: flex; align-items: center; gap: 8px; padding: 6px 0;
-    font-size: 12px; opacity: 0.35; transition: all 0.3s ease;
-  }
-  .progress-step.active { opacity: 1; }
-  .progress-step.done { opacity: 0.8; }
-  .progress-step .step-icon {
-    width: 20px; height: 20px; border-radius: 50%; display: flex;
-    align-items: center; justify-content: center; font-size: 10px;
-    flex-shrink: 0; border: 2px solid var(--border);
-  }
-  .progress-step.active .step-icon {
-    border-color: var(--blue); background: var(--blue-bg);
-    animation: pulse-step 1.2s ease-in-out infinite;
-  }
-  .progress-step.done .step-icon {
-    border-color: var(--green); background: var(--green-bg);
-  }
-  .progress-step.error .step-icon {
-    border-color: var(--red); background: var(--red-bg);
-  }
-  @keyframes pulse-step {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.15); }
-  }
-  .progress-step .step-label { flex: 1; }
-  .progress-step .step-time { font-size: 10px; color: var(--text-dim); }
-</style>
+<title>控制中心 · raricy.com</title>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<canvas id="space-bg" aria-hidden="true"></canvas>
+<div class="nebula nebula-a"></div>
+<div class="nebula nebula-b"></div>
+<div class="nebula nebula-c"></div>
+
+<header class="topbar">
+  <a class="brand" href="/">
+    <span class="brand-mark"></span>
+    <span class="brand-name">RARICY<span class="brand-sub">AUTO CHECK-IN</span></span>
+  </a>
+  <nav class="nav">
+    <a href="/" data-nav="index">控制中心</a>
+    <a href="/checkin" data-nav="checkin">自动打卡</a>
+    <a href="/blog" data-nav="blog">博客工具</a>
+    <a href="/config" data-nav="config">系统配置</a>
+  </nav>
+</header>
+
 <div class="container">
+  <header class="page-head">
+    <h1 class="page-title">控制<span class="accent">中心</span></h1>
+    <p class="page-sub">RARICY.COM 自动化操作台</p>
+  </header>
 
-  <!-- header -->
-  <div class="header">
-    <h1>🔔 自动打卡系统</h1>
-    <div class="sub">
-      raricy.com · 纯 HTTP API 自动化
-      &nbsp;·&nbsp;
-      <a href="/blog" style="color:var(--blue);">📚 博客工具</a>
-    </div>
-  </div>
+  <!-- 今日状态 -->
+  <section class="card">
+    <div class="card-title">今日状态</div>
+    <div id="statusContent"><span class="spinner"></span> 加载中...</div>
+  </section>
 
-  <!-- top row: status + actions -->
-  <div class="grid-2">
-    <!-- 状态卡片 -->
-    <div class="card">
-      <div class="card-title">📊 今日状态</div>
-      <div id="statusContent">
-        <div class="empty-state">加载中...</div>
-      </div>
-    </div>
-
-    <!-- 操作卡片 -->
-    <div class="card">
-      <div class="card-title">🎯 操作</div>
-      <div id="accountSelector" style="margin-bottom:8px;">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">选择打卡账号</div>
-        <div id="accountChips" style="display:flex;flex-wrap:wrap;gap:6px;">
-          <span style="font-size:12px;color:var(--text-dim);">加载中...</span>
+  <!-- 功能导航 -->
+  <section class="card">
+    <div class="card-title">功能导航</div>
+    <div class="tool-grid">
+      <a class="tool-card" href="/checkin">
+        <div class="tool-glyph">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"></circle>
+            <path d="M8 12l2.5 2.5L16 9"></path>
+          </svg>
         </div>
-        <div style="margin-top:6px;">
-          <button class="btn btn-ghost btn-sm" onclick="selectAllAccounts()" style="font-size:11px;padding:3px 8px;">全选</button>
-          <button class="btn btn-ghost btn-sm" onclick="deselectAllAccounts()" style="font-size:11px;padding:3px 8px;">取消全选</button>
+        <div class="tool-name">自动打卡</div>
+        <div class="tool-desc">每日签到、批量打卡与定时任务，实时进度与日志记录</div>
+        <span class="tool-cta">进入模块 →</span>
+      </a>
+      <a class="tool-card" href="/blog">
+        <div class="tool-glyph">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <path d="M14 2v6h6"></path>
+            <path d="M9 13h6"></path>
+            <path d="M9 17h6"></path>
+          </svg>
         </div>
-      </div>
-      <div style="text-align:center; padding: 8px 0;">
-        <button class="btn btn-success" id="checkinBtn" onclick="manualCheckin()" style="margin-right:6px;">
-          🖐 打卡所选
-        </button>
-        <button class="btn btn-primary" id="batchCheckinBtn" onclick="batchCheckin()">
-          ⚡ 批量全部
-        </button>
-        <div id="checkinResult" style="margin-top:12px; font-size:13px;"></div>
-      </div>
-      <div class="btn-row" style="justify-content:center;">
-        <button class="btn btn-ghost btn-sm" onclick="openScheduleModal()">⏰ 定时设置</button>
-        <button class="btn btn-ghost btn-sm" onclick="openConfigModal()">⚙ 配置</button>
-        <button class="btn btn-ghost btn-sm" onclick="refreshAll()">🔄 刷新</button>
-      </div>
+        <div class="tool-name">博客工具</div>
+        <div class="tool-desc">博客目录扫描、内容抓取与批量点赞，支持筛选排序</div>
+        <span class="tool-cta">进入模块 →</span>
+      </a>
+      <a class="tool-card" href="/config">
+        <div class="tool-glyph">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 21v-7"></path>
+            <path d="M4 10V3"></path>
+            <path d="M12 21v-9"></path>
+            <path d="M12 8V3"></path>
+            <path d="M20 21v-5"></path>
+            <path d="M20 12V3"></path>
+            <path d="M1 14h6"></path>
+            <path d="M9 8h6"></path>
+            <path d="M17 16h6"></path>
+          </svg>
+        </div>
+        <div class="tool-name">系统配置</div>
+        <div class="tool-desc">账号、站点、API 路径与定时任务集中管理</div>
+        <span class="tool-cta">进入模块 →</span>
+      </a>
     </div>
-  </div>
-
-  <!-- 日志列表 -->
-  <div class="card">
-    <div class="section-header">
-      <span class="card-title" style="margin-bottom:0;">📋 打卡记录</span>
-      <span style="font-size:12px;color:var(--text-dim);" id="logCount"></span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>日期</th><th>时间</th><th>账号</th><th>状态</th><th>说明</th><th>🔮运势</th><th>触发</th><th>耗时</th>
-          </tr>
-        </thead>
-        <tbody id="logBody">
-          <tr><td colspan="8" class="empty-state">加载中...</td></tr>
-        </tbody>
-        <tfoot id="logExpandRow" style="display:none;">
-          <tr><td colspan="8" style="text-align:center;padding:8px;">
-            <button class="btn btn-ghost btn-sm" onclick="toggleLogExpand()">
-              <span id="logExpandLabel">展开全部</span>
-            </button>
-          </td></tr>
-        </tfoot>
-      </table>
-    </div>
-  </div>
-
-</div><!-- /container -->
-
-<!-- 定时设置弹窗 -->
-<div class="modal-overlay" id="scheduleModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeScheduleModal()">&times;</button>
-    <h2>⏰ 定时设置</h2>
-    <div class="form-group">
-      <label>
-        <input type="checkbox" id="scheduleEnabled" onchange="toggleSchedule()" style="width:auto;">
-        启用定时打卡
-      </label>
-    </div>
-    <div class="form-group">
-      <label>当前定时时间</label>
-      <div id="timeTags" style="min-height:32px; padding:4px 0;"></div>
-    </div>
-    <div class="form-group">
-      <label>添加新时间</label>
-      <div class="form-row">
-        <input type="time" id="newTime" value="09:00" style="flex:2;">
-        <button class="btn btn-primary btn-sm" onclick="addTime()" style="flex:1;">添加</button>
-      </div>
-    </div>
-    <div class="btn-row" style="justify-content:flex-end;margin-top:16px;">
-      <button class="btn btn-ghost btn-sm" onclick="closeScheduleModal()">关闭</button>
-    </div>
-  </div>
+  </section>
 </div>
 
-<!-- 配置编辑弹窗 -->
-<div class="modal-overlay" id="configModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeConfigModal()">&times;</button>
-    <h2>⚙ 配置编辑</h2>
-
-    <!-- 站点设置 -->
-    <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
-      <legend style="font-size:12px;font-weight:600;color:var(--blue);padding:0 6px;">站点 URL</legend>
-      <div class="form-group">
-        <label>登录页 URL</label>
-        <input type="text" id="cfg_login_url" placeholder="https://raricy.com/login">
-      </div>
-      <div class="form-group">
-        <label>打卡页 URL</label>
-        <input type="text" id="cfg_checkin_url" placeholder="https://raricy.com/checkin">
-      </div>
-    </fieldset>
-
-    <!-- 账号管理 -->
-    <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
-      <legend style="font-size:12px;font-weight:600;color:var(--green);padding:0 6px;">👥 账号管理（多账号）</legend>
-      <div id="accountList" style="margin-bottom:10px;">
-        <span style="font-size:12px;color:var(--text-dim);">加载中...</span>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:8px;">
-        <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px;">添加账号</div>
-        <div class="form-row">
-          <input type="text" id="newAccountUsername" placeholder="用户名" style="flex:1;">
-          <input type="password" id="newAccountPassword" placeholder="密码" style="flex:1;">
-          <button class="btn btn-primary btn-sm" onclick="addAccount()" style="flex:0 0 auto;">➕ 添加</button>
-        </div>
-      </div>
-    </fieldset>
-
-    <!-- 选择器 -->
-    <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
-      <legend style="font-size:12px;font-weight:600;color:var(--blue);padding:0 6px;">CSS 选择器</legend>
-      <div class="grid-2">
-        <div class="form-group">
-          <label>用户名输入框</label>
-          <input type="text" id="cfg_username_input" placeholder="#username">
-        </div>
-        <div class="form-group">
-          <label>密码输入框</label>
-          <input type="text" id="cfg_password_input" placeholder="#password">
-        </div>
-        <div class="form-group">
-          <label>登录按钮</label>
-          <input type="text" id="cfg_login_button" placeholder="button[type=submit]">
-        </div>
-        <div class="form-group">
-          <label>打卡按钮</label>
-          <input type="text" id="cfg_checkin_button" placeholder="#punch-btn">
-        </div>
-        <div class="form-group">
-          <label>成功提示</label>
-          <input type="text" id="cfg_success_indicator" placeholder=".success-msg">
-        </div>
-        <div class="form-group">
-          <label>已打卡提示</label>
-          <input type="text" id="cfg_already_checked" placeholder=".already-checked">
-        </div>
-      </div>
-    </fieldset>
-
-    <!-- 运势卡片 -->
-    <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
-      <legend style="font-size:12px;font-weight:600;color:var(--yellow);padding:0 6px;">🔮 运势卡片（打卡后弹出）</legend>
-      <div class="form-group">
-        <label>
-          <input type="checkbox" id="cfg_fortune_enabled" style="width:auto;" checked>
-          启用运势卡片选择
-        </label>
-      </div>
-      <div class="grid-2">
-        <div class="form-group">
-          <label>弹窗选择器</label>
-          <input type="text" id="cfg_fortune_modal" placeholder=".fortune-modal--open">
-        </div>
-        <div class="form-group">
-          <label>卡片选择器</label>
-          <input type="text" id="cfg_fortune_card" placeholder=".fortune-card">
-        </div>
-        <div class="form-group">
-          <label>结果容器选择器</label>
-          <input type="text" id="cfg_fortune_result_container" placeholder="#fortuneResult">
-        </div>
-        <div class="form-group">
-          <label>结果值选择器</label>
-          <input type="text" id="cfg_fortune_result_value" placeholder="#fortuneResultValue">
-        </div>
-        <div class="form-group">
-          <label>结果描述选择器</label>
-          <input type="text" id="cfg_fortune_result_desc" placeholder="#fortuneResultDesc">
-        </div>
-        <div class="form-group">
-          <label>关闭按钮选择器</label>
-          <input type="text" id="cfg_fortune_close_btn" placeholder="#fortuneCloseBtn">
-        </div>
-        <div class="form-group">
-          <label>选择第几张 (0~4 或 random)</label>
-          <select id="cfg_fortune_index">
-            <option value="random">随机选择</option>
-            <option value="0">第 1 张</option>
-            <option value="1">第 2 张</option>
-            <option value="2">第 3 张</option>
-            <option value="3">第 4 张</option>
-            <option value="4">第 5 张</option>
-          </select>
-        </div>
-      </div>
-    </fieldset>
-
-    <!-- 高级 -->
-    <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
-      <legend style="font-size:12px;font-weight:600;color:var(--blue);padding:0 6px;">API 设置</legend>
-      <div class="form-group">
-        <label>登录 API 路径</label>
-        <input type="text" id="cfg_login_path" placeholder="/auth/login">
-      </div>
-      <div class="form-group">
-        <label>打卡 API 路径</label>
-        <input type="text" id="cfg_checkin_path" placeholder="/checkin/api/do-checkin">
-      </div>
-      <div class="form-group">
-        <label>运势 API 路径</label>
-        <input type="text" id="cfg_fortune_path" placeholder="/checkin/api/claim-fortune">
-      </div>
-    </fieldset>
-
-    <div class="btn-row" style="justify-content:space-between;">
-      <button class="btn btn-ghost btn-sm" onclick="closeConfigModal()">取消</button>
-      <button class="btn btn-primary btn-sm" onclick="saveConfig()">💾 保存配置</button>
-    </div>
-  </div>
-</div>
-
-<!-- Toast 容器 -->
-<div id="toastContainer"></div>
-
+<script src="app.js"></script>
+<script src="bg.js"></script>
 <script>
-// ── API 工具 ─────────────────────────────────────────────
-const API = {
-  async get(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  },
-  async post(url, body) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  },
-};
-
-// ── Toast ─────────────────────────────────────────────────
-function toast(msg, type = "success") {
-  const el = document.createElement("div");
-  el.className = `toast toast-${type}`;
-  el.textContent = msg;
-  document.getElementById("toastContainer").appendChild(el);
-  setTimeout(() => el.remove(), 3000);
-}
-
-// ── 状态面板 ─────────────────────────────────────────────
+// 控制中心：今日状态快照
 async function refreshStatus() {
+  const box = document.getElementById("statusContent");
   try {
     const data = await API.get("/api/status");
-    const div = document.getElementById("statusContent");
 
-    const statusIcon = data.today_checked ? "✅" : "❌";
-    const statusText = data.today_checked ? "已有账号打卡" : "全部未打卡";
-    const statusBadge = data.today_checked ? "badge-green" : "badge-red";
-
-    // 各账号状态
-    let accountStatusHtml = "";
-    if (data.account_status) {
-      const entries = Object.entries(data.account_status);
-      accountStatusHtml = entries.map(([username, record]) => {
-        const checked = record !== null;
-        const dot = checked ? '<span class="dot on" style="width:7px;height:7px;"></span>' : '<span class="dot off" style="width:7px;height:7px;"></span>';
-        const time = record ? record.time : '未打卡';
-        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">
-          ${dot} <b>${username}</b> <span style="color:var(--text-dim);">${time}</span>
-        </div>`;
-      }).join("");
-    }
-
-    const schedStatus = data.schedule_enabled
-      ? '<div class="dot on"></div> 定时已开启'
-      : '<div class="dot off"></div> 定时已关闭';
+    const todayBadge = data.today_checked
+      ? '<span class="badge badge-green">已打卡</span>'
+      : '<span class="badge badge-red">未打卡</span>';
 
     const nextRun = data.next_scheduled
-      ? `下次打卡：${data.next_scheduled}`
-      : '暂无定时任务';
+      ? escapeHtml(data.next_scheduled)
+      : '<span class="badge badge-muted">暂无定时任务</span>';
 
-    div.innerHTML = `
-      <div class="grid-3" style="margin-bottom:14px;">
-        <div class="stat-item">
-          <div class="stat-icon">${statusIcon}</div>
-          <div class="stat-value"><span class="badge ${statusBadge}">${statusText}</span></div>
-          <div class="stat-label">今日状态</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-icon">⏰</div>
-          <div class="stat-value" style="font-size:13px;">${nextRun}</div>
-          <div class="stat-label">下次定时</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-icon">⚡</div>
-          <div class="status-row" style="justify-content:center;margin-bottom:0;">${schedStatus}</div>
-          <div class="stat-label">调度器</div>
-        </div>
-      </div>
-      ${accountStatusHtml ? `<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px;">${accountStatusHtml}</div>` : ""}
-    `;
+    const schedDot = data.schedule_enabled
+      ? '<span class="dot on"></span>'
+      : '<span class="dot off"></span>';
+    const schedText = data.schedule_enabled ? '定时已开启' : '定时已关闭';
+
+    box.innerHTML =
+      '<div class="status-row">' +
+        '<span class="status-info"><span>今日打卡</span></span>' + todayBadge +
+      '</div>' +
+      '<div class="status-row">' +
+        '<span class="status-info"><span>下次定时</span></span>' +
+        '<span>' + nextRun + '</span>' +
+      '</div>' +
+      '<div class="status-row">' +
+        '<span class="status-info"><span>调度器</span></span>' +
+        schedDot +
+        '<span>' + schedText + '</span>' +
+      '</div>';
   } catch (e) {
-    document.getElementById("statusContent").innerHTML =
-      `<div class="empty-state" style="color:var(--red);">连接失败: ${e.message}</div>`;
+    box.innerHTML =
+      '<div class="empty-state" style="color:var(--red);">状态加载失败: ' +
+      escapeHtml(e.message) + '</div>';
   }
 }
 
-// ── 手动打卡（异步 + 进度动画）─────────────────────────
-let _pollTimer = null;
-
-const POLL_MAX_MS = 600000; // 10 分钟：进度轮询最长时间，防止任务挂死时无限轮询
-
-// 终止进度轮询并恢复按钮状态
-function stopCheckinPoll(errorMsg) {
-  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-  const btn = document.getElementById("checkinBtn");
-  const batchBtn = document.getElementById("batchCheckinBtn");
-  btn.disabled = false;
-  if (batchBtn) batchBtn.disabled = false;
-  btn.innerHTML = "🖐 打卡所选";
-  if (errorMsg) {
-    const resultDiv = document.getElementById("checkinResult");
-    if (resultDiv) resultDiv.innerHTML = `<span style="color:var(--red);">${errorMsg}</span>`;
-    toast(errorMsg, "error");
-  }
-}
-
-function renderProgressSteps(steps, currentAccount, accountIndex, totalAccounts) {
-  // Map backend step keys to display labels
-  const STEP_LABELS = {
-    "login": "正在登录",
-    "logged_in": "登录成功 ✓",
-    "checking": "正在打卡",
-    "checkin_done": "打卡成功 ✓",
-    "fortune": "正在抽取运势",
-    "fortune_done": "运势抽取完成 ✓",
-    "done": "全部完成",
-    "error": "出错",
-  };
-
-  let html = "";
-  if (totalAccounts > 1) {
-    html += `<div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">👤 ${currentAccount || '...'} (${accountIndex}/${totalAccounts})</div>`;
-  }
-
-  html += '<div class="progress-steps">';
-
-  // Show the current active step + completed ones
-  if (steps && steps.length > 0) {
-    const shown = new Set();
-    steps.forEach((s, i) => {
-      if (shown.has(s.step)) return;
-      shown.add(s.step);
-      let cls = "done";
-      if (s.step === "error") cls = "error";
-      if (i === steps.length - 1 && s.step !== "done" && s.step !== "error") cls = "active";
-
-      const label = STEP_LABELS[s.step] || s.message || s.step;
-      const icon = cls === "done" ? "✓" : cls === "error" ? "✗" : cls === "active" ? "●" : "○";
-      html += `<div class="progress-step ${cls}">
-        <span class="step-icon">${icon}</span>
-        <span class="step-label">${label}</span>
-        <span class="step-time">${s.time || ''}</span>
-      </div>`;
-    });
-  } else {
-    html += `<div class="progress-step active">
-      <span class="step-icon">●</span>
-      <span class="step-label">正在准备...</span>
-    </div>`;
-  }
-
-  html += '</div>';
-  return html;
-}
-
-async function manualCheckin() {
-  const btn = document.getElementById("checkinBtn");
-  const batchBtn = document.getElementById("batchCheckinBtn");
-  const resultDiv = document.getElementById("checkinResult");
-
-  const accounts = [...selectedAccounts];
-  if (accounts.length === 0) {
-    toast("请先选择要打卡的账号", "error");
-    return;
-  }
-
-  btn.disabled = true;
-  if (batchBtn) batchBtn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 打卡中...';
-  resultDiv.innerHTML = "";
-
-  // Stop any existing poll
-  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-
-  try {
-    // 1. Start the check-in task
-    const { task_id } = await API.post("/api/checkin", { accounts });
-
-    // 2. Poll for progress
-    const started = Date.now();
-    _pollTimer = setInterval(async () => {
-      try {
-        if (Date.now() - started > POLL_MAX_MS) {
-          stopCheckinPoll("任务超时，已停止轮询");
-          return;
-        }
-        const progress = await API.get(`/api/checkin/progress/${task_id}`);
-
-        // Update progress animation
-        resultDiv.innerHTML = renderProgressSteps(
-          progress.steps || [],
-          progress.current_account || "",
-          progress.account_index || 0,
-          progress.total_accounts || 0
-        );
-
-        // Check if done
-        if (progress.done) {
-          clearInterval(_pollTimer);
-          _pollTimer = null;
-
-          btn.disabled = false;
-          if (batchBtn) batchBtn.disabled = false;
-          btn.innerHTML = "🖐 打卡所选";
-
-          // Show final results
-          const results = progress.results || [];
-          let html = '<div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;">';
-          results.forEach(r => {
-            const icon = r.success ? "✅" : "❌";
-            html += `<div style="margin:3px 0;font-size:12px;">${icon} [${r.account}] ${r.message}</div>`;
-            if (r.fortune && r.fortune.handled) {
-              const f = r.fortune;
-              html += `<div style="margin:2px 0 6px 18px;font-size:11px;color:var(--yellow);">🔮 第${f.card_selected+1}/${f.total_cards}张: ${f.result_text || ''}</div>`;
-            }
-          });
-          html += '</div>';
-          resultDiv.innerHTML += html;
-
-          toast(`打卡完成: ${progress.success_count}/${progress.total} 成功`);
-          refreshAll();
-        }
-      } catch (e) {
-        // 404 / 连接失败：任务可能已失效，终止轮询而非无限重试
-        stopCheckinPoll("任务已失效或服务不可用，已停止轮询");
-      }
-    }, 500);
-
-  } catch (e) {
-    btn.disabled = false;
-    if (batchBtn) batchBtn.disabled = false;
-    btn.innerHTML = "🖐 打卡所选";
-    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-    resultDiv.innerHTML = `<span style="color:var(--red);">请求失败: ${e.message}</span>`;
-    toast("请求失败: " + e.message, "error");
-  }
-}
-
-async function batchCheckin() {
-  selectAllAccounts();
-  await manualCheckin();
-}
-
-// ── 日志列表 ─────────────────────────────────────────────
-const LOG_DEFAULT = 5;   // 默认显示条数
-const LOG_MAX = 50;      // 最多显示条数
-let logExpanded = false;
-
-async function refreshLogs() {
-  try {
-    const limit = logExpanded ? LOG_MAX : LOG_DEFAULT;
-    const logs = await API.get(`/api/logs?limit=${LOG_MAX}`);
-    const tbody = document.getElementById("logBody");
-    const displayLogs = logs.slice(0, limit);
-    document.getElementById("logCount").textContent = `显示 ${displayLogs.length} / 共 ${logs.length} 条`;
-
-    if (logs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">暂无打卡记录</td></tr>';
-      // hide expand button area
-      const expandRow = document.getElementById("logExpandRow");
-      if (expandRow) expandRow.style.display = "none";
-      return;
-    }
-
-    const allLogsHtml = logs.map((l, i) => {
-      const hidden = i >= LOG_DEFAULT && !logExpanded ? ' style="display:none;"' : '';
-      return _renderLogRow(l, hidden);
-    }).join("");
-
-    const hasMore = logs.length > displayLogs.length;
-    tbody.innerHTML = allLogsHtml;
-
-    // Expand/collapse button
-    const expandRow = document.getElementById("logExpandRow");
-    if (expandRow) expandRow.style.display = (hasMore || logExpanded) ? "" : "none";
-    if (hasMore && !logExpanded) {
-      document.getElementById("logExpandLabel").textContent = `展开全部 (${logs.length} 条)`;
-    } else if (logExpanded) {
-      document.getElementById("logExpandLabel").textContent = "收起";
-    }
-  } catch (e) {
-    document.getElementById("logBody").innerHTML =
-      `<tr><td colspan="8" class="empty-state" style="color:var(--red);">加载失败: ${e.message}</td></tr>`;
-  }
-}
-
-function toggleLogExpand() {
-  logExpanded = !logExpanded;
-  refreshLogs();
-}
-
-function _renderLogRow(l, hiddenAttr) {
-  let badge = "";
-  if (l.already_checked) {
-    badge = '<span class="badge badge-yellow">已打卡</span>';
-  } else if (l.success) {
-    badge = '<span class="badge badge-green">成功</span>';
-  } else {
-    badge = '<span class="badge badge-red">失败</span>';
-  }
-  const trigger = l.trigger === "manual"
-    ? '<span class="badge badge-blue">手动</span>'
-    : '<span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-dim);">定时</span>';
-  const duration = l.duration_seconds ? `${l.duration_seconds}s` : "-";
-
-  // 运势结果 — 显示最终运势值
-  let fortuneHtml = "-";
-  if (l.fortune && l.fortune.handled) {
-    const resultText = l.fortune.result_text || l.fortune.result_value || "";
-    const pool = l.fortune.pool ? ` [${l.fortune.pool.join(', ')}]` : '';
-    fortuneHtml = `<span title="卡池:${pool}" style="cursor:help;color:var(--yellow);">${resultText}</span>`;
-  }
-
-  return `
-    <tr${hiddenAttr}>
-      <td>${l.date || "-"}</td>
-      <td>${l.time || "-"}</td>
-      <td><b>${l.account || "-"}</b></td>
-      <td>${badge}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${l.message || ""}">${l.message || "-"}</td>
-      <td style="font-size:12px;">${fortuneHtml}</td>
-      <td>${trigger}</td>
-      <td>${duration}</td>
-    </tr>`;
-}
-
-// ── 账号选择状态 ─────────────────────────────────────────
-let selectedAccounts = new Set();  // 选中的账号用户名集合
-let allAccounts = [];              // 所有启用账号列表
-
-async function loadAccounts() {
-  try {
-    allAccounts = await API.get("/api/accounts");
-  } catch (e) {
-    allAccounts = [];
-  }
-}
-
-function renderAccountChips() {
-  const container = document.getElementById("accountChips");
-  if (allAccounts.length === 0) {
-    container.innerHTML = '<span style="font-size:12px;color:var(--text-dim);">暂无账号，请在「⚙ 配置」中添加</span>';
-    return;
-  }
-  // 默认全选
-  if (selectedAccounts.size === 0) {
-    allAccounts.forEach(a => selectedAccounts.add(a.username));
-  }
-  container.innerHTML = allAccounts.map(a => {
-    const sel = selectedAccounts.has(a.username) ? " selected" : "";
-    return `<span class="account-chip${sel}" onclick="toggleAccountSelect('${a.username}')" title="点击选择/取消">
-      ${a.username}
-    </span>`;
-  }).join("");
-}
-
-function toggleAccountSelect(username) {
-  if (selectedAccounts.has(username)) {
-    selectedAccounts.delete(username);
-  } else {
-    selectedAccounts.add(username);
-  }
-  renderAccountChips();
-}
-
-function selectAllAccounts() {
-  allAccounts.forEach(a => selectedAccounts.add(a.username));
-  renderAccountChips();
-}
-
-function deselectAllAccounts() {
-  selectedAccounts.clear();
-  renderAccountChips();
-}
-
-// ── 定时设置弹窗 ─────────────────────────────────────────
-let scheduleTimes = [];
-
-async function openScheduleModal() {
-  document.getElementById("scheduleModal").classList.add("open");
-  try {
-    const config = await API.get("/api/config");
-    document.getElementById("scheduleEnabled").checked = config.schedule?.enabled ?? true;
-    scheduleTimes = config.schedule?.times || [];
-    renderTimeTags();
-  } catch (e) {
-    toast("加载配置失败: " + e.message, "error");
-  }
-}
-
-function closeScheduleModal() {
-  document.getElementById("scheduleModal").classList.remove("open");
-}
-
-function renderTimeTags() {
-  const div = document.getElementById("timeTags");
-  if (scheduleTimes.length === 0) {
-    div.innerHTML = '<span style="color:var(--text-dim);font-size:13px;">暂无定时任务</span>';
-    return;
-  }
-  div.innerHTML = scheduleTimes.map(t => `
-    <span class="time-tag">
-      🕐 ${t}
-      <button onclick="removeTime('${t}')" title="删除">&times;</button>
-    </span>
-  `).join("");
-}
-
-async function toggleSchedule() {
-  const enabled = document.getElementById("scheduleEnabled").checked;
-  await API.post("/api/config", {
-    path: ["schedule", "enabled"],
-    value: enabled,
-  });
-  toast(enabled ? "定时打卡已启用" : "定时打卡已禁用");
-  refreshStatus();
-}
-
-async function addTime() {
-  const input = document.getElementById("newTime");
-  const timeVal = input.value;
-  if (!timeVal) return;
-  if (scheduleTimes.includes(timeVal)) {
-    toast("该时间已存在", "error");
-    return;
-  }
-  scheduleTimes.push(timeVal);
-  scheduleTimes.sort();
-  await API.post("/api/config", {
-    path: ["schedule", "times"],
-    value: scheduleTimes,
-  });
-  renderTimeTags();
-  input.value = "";
-  toast(`已添加定时: ${timeVal}`);
-  refreshStatus();
-}
-
-async function removeTime(timeVal) {
-  scheduleTimes = scheduleTimes.filter(t => t !== timeVal);
-  await API.post("/api/config", {
-    path: ["schedule", "times"],
-    value: scheduleTimes,
-  });
-  renderTimeTags();
-  toast(`已移除定时: ${timeVal}`);
-  refreshStatus();
-}
-
-// ── 配置编辑弹窗 ─────────────────────────────────────────
-async function openConfigModal() {
-  document.getElementById("configModal").classList.add("open");
-  try {
-    const config = await API.get("/api/config");
-    document.getElementById("cfg_login_url").value = config.site?.login_url || "";
-    document.getElementById("cfg_checkin_url").value = config.site?.checkin_url || "";
-    document.getElementById("cfg_username_input").value = config.selectors?.username_input || "";
-    document.getElementById("cfg_password_input").value = config.selectors?.password_input || "";
-    document.getElementById("cfg_login_button").value = config.selectors?.login_button || "";
-    document.getElementById("cfg_checkin_button").value = config.selectors?.checkin_button || "";
-    document.getElementById("cfg_success_indicator").value = config.selectors?.success_indicator || "";
-    document.getElementById("cfg_already_checked").value = config.selectors?.already_checked_in || "";
-    // API 路径
-    document.getElementById("cfg_login_path").value = config.api?.login_path || "/auth/login";
-    document.getElementById("cfg_checkin_path").value = config.api?.checkin_path || "/checkin/api/do-checkin";
-    document.getElementById("cfg_fortune_path").value = config.api?.fortune_path || "/checkin/api/claim-fortune";
-    // 运势卡片配置
-    document.getElementById("cfg_fortune_enabled").checked = config.fortune?.enabled ?? true;
-    document.getElementById("cfg_fortune_modal").value = config.fortune?.modal_selector || ".fortune-modal--open";
-    document.getElementById("cfg_fortune_card").value = config.fortune?.card_selector || ".fortune-card";
-    document.getElementById("cfg_fortune_result_container").value = config.fortune?.result_container_selector || "#fortuneResult";
-    document.getElementById("cfg_fortune_result_value").value = config.fortune?.result_value_selector || "#fortuneResultValue";
-    document.getElementById("cfg_fortune_result_desc").value = config.fortune?.result_desc_selector || "#fortuneResultDesc";
-    document.getElementById("cfg_fortune_close_btn").value = config.fortune?.close_button_selector || "#fortuneCloseBtn";
-    document.getElementById("cfg_fortune_index").value = config.fortune?.card_index || "random";
-
-    // 加载账号列表
-    configAccounts = config.accounts || [];
-    // 兼容旧配置
-    if (configAccounts.length === 0 && config.site?.username) {
-      configAccounts = [{ username: config.site.username, password: "****", enabled: true }];
-    }
-    renderAccountList();
-  } catch (e) {
-    toast("加载配置失败: " + e.message, "error");
-  }
-}
-
-// ── 账号管理（配置弹窗内）─────────────────────────────────
-let configAccounts = [];
-
-function renderAccountList() {
-  const container = document.getElementById("accountList");
-  if (configAccounts.length === 0) {
-    container.innerHTML = '<span style="font-size:12px;color:var(--text-dim);">暂无账号，请添加</span>';
-    return;
-  }
-  container.innerHTML = configAccounts.map((acc, i) => `
-    <div class="account-item">
-      <span class="acct-name">👤 ${acc.username}</span>
-      <span class="acct-status">
-        <span class="badge ${acc.enabled !== false ? 'badge-green' : 'badge-red'}" style="cursor:pointer;" onclick="toggleAccountEnabled(${i})" title="点击切换启用/禁用">
-          ${acc.enabled !== false ? '启用' : '禁用'}
-        </span>
-      </span>
-      <button class="btn btn-danger btn-sm" onclick="removeAccount(${i})" style="padding:3px 8px;font-size:11px;" title="删除账号">✕</button>
-    </div>
-  `).join("");
-}
-
-function addAccount() {
-  const username = document.getElementById("newAccountUsername").value.trim();
-  const password = document.getElementById("newAccountPassword").value;
-  if (!username) { toast("请输入用户名", "error"); return; }
-  if (!password) { toast("请输入密码", "error"); return; }
-  // 检查是否已存在
-  if (configAccounts.some(a => a.username === username)) {
-    toast("该账号已存在", "error");
-    return;
-  }
-  configAccounts.push({ username, password, enabled: true });
-  document.getElementById("newAccountUsername").value = "";
-  document.getElementById("newAccountPassword").value = "";
-  renderAccountList();
-  toast(`已添加账号: ${username}`);
-}
-
-function removeAccount(index) {
-  const acc = configAccounts[index];
-  configAccounts.splice(index, 1);
-  renderAccountList();
-  toast(`已移除账号: ${acc.username}`);
-}
-
-function toggleAccountEnabled(index) {
-  configAccounts[index].enabled = !(configAccounts[index].enabled !== false);
-  renderAccountList();
-}
-
-function closeConfigModal() {
-  document.getElementById("configModal").classList.remove("open");
-}
-
-async function saveConfig() {
-  const get = id => document.getElementById(id).value;
-  const getBool = id => document.getElementById(id).checked;
-
-  // 构建账号数组：新增账号保留真实密码，已有账号若密码为 **** 则保留原密码
-  const accounts = configAccounts.map(acc => ({
-    username: acc.username,
-    password: acc.password || "****",  // "****" 时服务端保留原密码
-    enabled: acc.enabled !== false,
-  }));
-
-  const fullConfig = {
-    site: {
-      login_url: get("cfg_login_url"),
-      checkin_url: get("cfg_checkin_url"),
-    },
-    accounts: accounts,
-    selectors: {
-      username_input: get("cfg_username_input"),
-      password_input: get("cfg_password_input"),
-      login_button: get("cfg_login_button"),
-      checkin_button: get("cfg_checkin_button"),
-      success_indicator: get("cfg_success_indicator"),
-      already_checked_in: get("cfg_already_checked"),
-    },
-    schedule: {
-      times: scheduleTimes,
-      timezone: "Asia/Shanghai",
-      enabled: document.getElementById("scheduleEnabled").checked,
-    },
-    fortune: {
-      enabled: getBool("cfg_fortune_enabled"),
-      modal_selector: get("cfg_fortune_modal"),
-      card_selector: get("cfg_fortune_card"),
-      result_container_selector: get("cfg_fortune_result_container"),
-      result_value_selector: get("cfg_fortune_result_value"),
-      result_desc_selector: get("cfg_fortune_result_desc"),
-      close_button_selector: get("cfg_fortune_close_btn"),
-      card_index: get("cfg_fortune_index"),
-      modal_wait_timeout: 10,
-    },
-    api: {
-      login_path: get("cfg_login_path"),
-      checkin_path: get("cfg_checkin_path"),
-      fortune_path: get("cfg_fortune_path"),
-    },
-  };
-
-  try {
-    await API.post("/api/config", fullConfig);
-
-    toast("配置已保存，调度器已重启");
-    closeConfigModal();
-    refreshAll();
-  } catch (e) {
-    toast("保存配置失败: " + e.message, "error");
-  }
-}
-
-// ── 全局刷新 ─────────────────────────────────────────────
-async function refreshAll() {
-  await loadAccounts();
-  renderAccountChips();
-  refreshStatus();
-  refreshLogs();
-}
-
-// ── 初始化 ───────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-  refreshAll();
-  // 每 10 分钟自动刷新（打卡任务进行中跳过，避免覆盖进度/干扰操作）
-  setInterval(() => {
-    if (_pollTimer) return;  // 打卡轮询进行中，跳过本次自动刷新
-    refreshAll();
-  }, 600000);
-});
-
-// 点击弹窗遮罩关闭
-document.getElementById("scheduleModal").addEventListener("click", function(e) {
-  if (e.target === this) closeScheduleModal();
-});
-document.getElementById("configModal").addEventListener("click", function(e) {
-  if (e.target === this) closeConfigModal();
-});
+refreshStatus();
+setInterval(refreshStatus, 600000);
 </script>
 </body>
 </html>

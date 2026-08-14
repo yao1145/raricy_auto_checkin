@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自动打卡 · raricy.com</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="space-bg" aria-hidden="true"></canvas>
+<div class="nebula nebula-a"></div>
+<div class="nebula nebula-b"></div>
+<div class="nebula nebula-c"></div>
+
+<header class="topbar">
+  <a class="brand" href="/">
+    <span class="brand-mark"></span>
+    <span class="brand-name">RARICY<span class="brand-sub">AUTO CHECK-IN</span></span>
+  </a>
+  <nav class="nav">
+    <a href="/" data-nav="index">控制中心</a>
+    <a href="/checkin" data-nav="checkin">自动打卡</a>
+    <a href="/blog" data-nav="blog">博客工具</a>
+    <a href="/config" data-nav="config">系统配置</a>
+  </nav>
+</header>
+
+<div class="container">
+  <header class="page-head">
+    <h1 class="page-title">自动<span class="accent">打卡</span></h1>
+    <p class="page-sub">RARICY.COM · 每日签到与定时任务</p>
+  </header>
+
+  <!-- 今日状态 + 操作 -->
+  <div class="grid-2">
+    <!-- 状态卡片 -->
+    <div class="card">
+      <div class="card-title">今日状态</div>
+      <div id="statusContent">
+        <div class="empty-state">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 操作卡片 -->
+    <div class="card">
+      <div class="card-title">操作</div>
+      <div id="accountSelector" style="margin-bottom:8px;">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">选择打卡账号</div>
+        <div class="account-select-row" id="accountChips">
+          <span style="font-size:12px;color:var(--text-dim);">加载中...</span>
+        </div>
+        <div style="margin-top:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="selectAllAccounts()">全选</button>
+          <button class="btn btn-ghost btn-sm" onclick="deselectAllAccounts()">取消全选</button>
+        </div>
+      </div>
+      <div style="text-align:center; padding: 8px 0;">
+        <button class="btn btn-success" id="checkinBtn" onclick="manualCheckin()" style="margin-right:6px;">打卡所选</button>
+        <button class="btn btn-primary" id="batchCheckinBtn" onclick="batchCheckin()">批量全部</button>
+        <div id="checkinResult" style="margin-top:12px; font-size:13px;"></div>
+      </div>
+      <div class="btn-row" style="justify-content:center;">
+        <a class="btn btn-ghost btn-sm" href="/config">系统配置</a>
+        <a class="btn btn-ghost btn-sm" href="/blog">博客工具</a>
+        <button class="btn btn-ghost btn-sm" onclick="refreshAll()">刷新</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 打卡记录 -->
+  <div class="card">
+    <div class="section-header">
+      <span class="card-title" style="margin-bottom:0;">打卡记录</span>
+      <span style="font-size:12px;color:var(--text-dim);" id="logCount"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th><th>时间</th><th>账号</th><th>状态</th><th>说明</th><th>运势</th><th>触发</th><th>耗时</th>
+          </tr>
+        </thead>
+        <tbody id="logBody">
+          <tr><td colspan="8" class="empty-state">加载中...</td></tr>
+        </tbody>
+        <tfoot id="logExpandRow" style="display:none;">
+          <tr><td colspan="8" style="text-align:center;padding:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="toggleLogExpand()">
+              <span id="logExpandLabel">展开全部</span>
+            </button>
+          </td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+<script src="bg.js"></script>
+<script>
+// ── 状态面板 ─────────────────────────────────────────────
+async function refreshStatus() {
+  try {
+    const data = await API.get("/api/status");
+    const div = document.getElementById("statusContent");
+
+    const statusIcon = data.today_checked ? "✓" : "✗";
+    const statusColor = data.today_checked ? "var(--green)" : "var(--red)";
+    const statusText = data.today_checked ? "已有账号打卡" : "全部未打卡";
+    const statusBadge = data.today_checked ? "badge-green" : "badge-red";
+
+    // 各账号状态
+    let accountStatusHtml = "";
+    if (data.account_status) {
+      const entries = Object.entries(data.account_status);
+      accountStatusHtml = entries.map(([username, record]) => {
+        const checked = record !== null;
+        const dot = checked ? '<span class="dot on" style="width:7px;height:7px;"></span>' : '<span class="dot off" style="width:7px;height:7px;"></span>';
+        const time = record ? record.time : '未打卡';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">
+          ${dot} <b>${username}</b> <span style="color:var(--text-dim);">${time}</span>
+        </div>`;
+      }).join("");
+    }
+
+    const schedStatus = data.schedule_enabled
+      ? '<div class="dot on"></div> 定时已开启'
+      : '<div class="dot off"></div> 定时已关闭';
+
+    const nextRun = data.next_scheduled
+      ? `下次打卡：${data.next_scheduled}`
+      : '暂无定时任务';
+
+    div.innerHTML = `
+      <div class="grid-3" style="margin-bottom:14px;">
+        <div class="stat-item">
+          <div class="stat-icon" style="color:${statusColor};">${statusIcon}</div>
+          <div class="stat-value"><span class="badge ${statusBadge}">${statusText}</span></div>
+          <div class="stat-label">今日状态</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon">●</div>
+          <div class="stat-value" style="font-size:13px;">${nextRun}</div>
+          <div class="stat-label">下次定时</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon">●</div>
+          <div class="status-row" style="justify-content:center;margin-bottom:0;">${schedStatus}</div>
+          <div class="stat-label">调度器</div>
+        </div>
+      </div>
+      ${accountStatusHtml ? `<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px;">${accountStatusHtml}</div>` : ""}
+    `;
+  } catch (e) {
+    document.getElementById("statusContent").innerHTML =
+      `<div class="empty-state" style="color:var(--red);">连接失败: ${e.message}</div>`;
+  }
+}
+
+// ── 手动打卡（异步 + 进度动画）─────────────────────────
+let _pollTimer = null;
+
+const POLL_MAX_MS = 600000; // 10 分钟：进度轮询最长时间，防止任务挂死时无限轮询
+
+// 终止进度轮询并恢复按钮状态
+function stopCheckinPoll(errorMsg) {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  const btn = document.getElementById("checkinBtn");
+  const batchBtn = document.getElementById("batchCheckinBtn");
+  btn.disabled = false;
+  if (batchBtn) batchBtn.disabled = false;
+  btn.innerHTML = "打卡所选";
+  if (errorMsg) {
+    const resultDiv = document.getElementById("checkinResult");
+    if (resultDiv) resultDiv.innerHTML = `<span style="color:var(--red);">${errorMsg}</span>`;
+    toast(errorMsg, "error");
+  }
+}
+
+function renderProgressSteps(steps, currentAccount, accountIndex, totalAccounts) {
+  // Map backend step keys to display labels
+  const STEP_LABELS = {
+    "login": "正在登录",
+    "logged_in": "登录成功 ✓",
+    "checking": "正在打卡",
+    "checkin_done": "打卡成功 ✓",
+    "fortune": "正在抽取运势",
+    "fortune_done": "运势抽取完成 ✓",
+    "done": "全部完成",
+    "error": "出错",
+  };
+
+  let html = "";
+  if (totalAccounts > 1) {
+    html += `<div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">账号 ${currentAccount || '...'} (${accountIndex}/${totalAccounts})</div>`;
+  }
+
+  html += '<div class="progress-steps">';
+
+  // Show the current active step + completed ones
+  if (steps && steps.length > 0) {
+    const shown = new Set();
+    steps.forEach((s, i) => {
+      if (shown.has(s.step)) return;
+      shown.add(s.step);
+      let cls = "done";
+      if (s.step === "error") cls = "error";
+      if (i === steps.length - 1 && s.step !== "done" && s.step !== "error") cls = "active";
+
+      const label = STEP_LABELS[s.step] || s.message || s.step;
+      const icon = cls === "done" ? "✓" : cls === "error" ? "✗" : cls === "active" ? "●" : "○";
+      html += `<div class="progress-step ${cls}">
+        <span class="step-icon">${icon}</span>
+        <span class="step-label">${label}</span>
+        <span class="step-time">${s.time || ''}</span>
+      </div>`;
+    });
+  } else {
+    html += `<div class="progress-step active">
+      <span class="step-icon">●</span>
+      <span class="step-label">正在准备...</span>
+    </div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+async function manualCheckin() {
+  const btn = document.getElementById("checkinBtn");
+  const batchBtn = document.getElementById("batchCheckinBtn");
+  const resultDiv = document.getElementById("checkinResult");
+
+  const accounts = [...selectedAccounts];
+  if (accounts.length === 0) {
+    toast("请先选择要打卡的账号", "error");
+    return;
+  }
+
+  btn.disabled = true;
+  if (batchBtn) batchBtn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 打卡中...';
+  resultDiv.innerHTML = "";
+
+  // Stop any existing poll
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+
+  try {
+    // 1. Start the check-in task
+    const { task_id } = await API.post("/api/checkin", { accounts });
+
+    // 2. Poll for progress
+    const started = Date.now();
+    _pollTimer = setInterval(async () => {
+      try {
+        if (Date.now() - started > POLL_MAX_MS) {
+          stopCheckinPoll("任务超时，已停止轮询");
+          return;
+        }
+        const progress = await API.get(`/api/checkin/progress/${task_id}`);
+
+        // Update progress animation
+        resultDiv.innerHTML = renderProgressSteps(
+          progress.steps || [],
+          progress.current_account || "",
+          progress.account_index || 0,
+          progress.total_accounts || 0
+        );
+
+        // Check if done
+        if (progress.done) {
+          clearInterval(_pollTimer);
+          _pollTimer = null;
+
+          btn.disabled = false;
+          if (batchBtn) batchBtn.disabled = false;
+          btn.innerHTML = "打卡所选";
+
+          // Show final results
+          const results = progress.results || [];
+          let html = '<div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;">';
+          results.forEach(r => {
+            const icon = r.success ? "✓" : "✗";
+            html += `<div style="margin:3px 0;font-size:12px;">${icon} [${r.account}] ${r.message}</div>`;
+            if (r.fortune && r.fortune.handled) {
+              const f = r.fortune;
+              html += `<div style="margin:2px 0 6px 18px;font-size:11px;color:var(--yellow);">第${f.card_selected+1}/${f.total_cards}张: ${f.result_text || ''}</div>`;
+            }
+          });
+          html += '</div>';
+          resultDiv.innerHTML += html;
+
+          toast(`打卡完成: ${progress.success_count}/${progress.total} 成功`);
+          refreshAll();
+        }
+      } catch (e) {
+        // 404 / 连接失败：任务可能已失效，终止轮询而非无限重试
+        stopCheckinPoll("任务已失效或服务不可用，已停止轮询");
+      }
+    }, 500);
+
+  } catch (e) {
+    btn.disabled = false;
+    if (batchBtn) batchBtn.disabled = false;
+    btn.innerHTML = "打卡所选";
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    resultDiv.innerHTML = `<span style="color:var(--red);">请求失败: ${e.message}</span>`;
+    toast("请求失败: " + e.message, "error");
+  }
+}
+
+async function batchCheckin() {
+  selectAllAccounts();
+  await manualCheckin();
+}
+
+// ── 日志列表 ─────────────────────────────────────────────
+const LOG_DEFAULT = 5;   // 默认显示条数
+const LOG_MAX = 50;      // 最多显示条数
+let logExpanded = false;
+
+async function refreshLogs() {
+  try {
+    const limit = logExpanded ? LOG_MAX : LOG_DEFAULT;
+    const logs = await API.get(`/api/logs?limit=${LOG_MAX}`);
+    const tbody = document.getElementById("logBody");
+    const displayLogs = logs.slice(0, limit);
+    document.getElementById("logCount").textContent = `显示 ${displayLogs.length} / 共 ${logs.length} 条`;
+
+    if (logs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">暂无打卡记录</td></tr>';
+      // hide expand button area
+      const expandRow = document.getElementById("logExpandRow");
+      if (expandRow) expandRow.style.display = "none";
+      return;
+    }
+
+    const allLogsHtml = logs.map((l, i) => {
+      const hidden = i >= LOG_DEFAULT && !logExpanded ? ' style="display:none;"' : '';
+      return _renderLogRow(l, hidden);
+    }).join("");
+
+    const hasMore = logs.length > displayLogs.length;
+    tbody.innerHTML = allLogsHtml;
+
+    // Expand/collapse button
+    const expandRow = document.getElementById("logExpandRow");
+    if (expandRow) expandRow.style.display = (hasMore || logExpanded) ? "" : "none";
+    if (hasMore && !logExpanded) {
+      document.getElementById("logExpandLabel").textContent = `展开全部 (${logs.length} 条)`;
+    } else if (logExpanded) {
+      document.getElementById("logExpandLabel").textContent = "收起";
+    }
+  } catch (e) {
+    document.getElementById("logBody").innerHTML =
+      `<tr><td colspan="8" class="empty-state" style="color:var(--red);">加载失败: ${e.message}</td></tr>`;
+  }
+}
+
+function toggleLogExpand() {
+  logExpanded = !logExpanded;
+  refreshLogs();
+}
+
+function _renderLogRow(l, hiddenAttr) {
+  let badge = "";
+  if (l.already_checked) {
+    badge = '<span class="badge badge-yellow">已打卡</span>';
+  } else if (l.success) {
+    badge = '<span class="badge badge-green">成功</span>';
+  } else {
+    badge = '<span class="badge badge-red">失败</span>';
+  }
+  const trigger = l.trigger === "manual"
+    ? '<span class="badge badge-blue">手动</span>'
+    : '<span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-dim);">定时</span>';
+  const duration = l.duration_seconds ? `${l.duration_seconds}s` : "-";
+
+  // 运势结果 — 显示最终运势值
+  let fortuneHtml = "-";
+  if (l.fortune && l.fortune.handled) {
+    const resultText = l.fortune.result_text || l.fortune.result_value || "";
+    const pool = l.fortune.pool ? ` [${l.fortune.pool.join(', ')}]` : '';
+    fortuneHtml = `<span title="卡池:${pool}" style="cursor:help;color:var(--yellow);">${resultText}</span>`;
+  }
+
+  return `
+    <tr${hiddenAttr}>
+      <td>${l.date || "-"}</td>
+      <td>${l.time || "-"}</td>
+      <td><b>${l.account || "-"}</b></td>
+      <td>${badge}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${l.message || ""}">${l.message || "-"}</td>
+      <td style="font-size:12px;">${fortuneHtml}</td>
+      <td>${trigger}</td>
+      <td>${duration}</td>
+    </tr>`;
+}
+
+// ── 账号选择状态 ─────────────────────────────────────────
+let selectedAccounts = new Set();  // 选中的账号用户名集合
+let allAccounts = [];              // 所有启用账号列表
+
+async function loadAccounts() {
+  try {
+    allAccounts = await API.get("/api/accounts");
+  } catch (e) {
+    allAccounts = [];
+  }
+}
+
+function renderAccountChips() {
+  const container = document.getElementById("accountChips");
+  if (allAccounts.length === 0) {
+    container.innerHTML = '<span style="font-size:12px;color:var(--text-dim);">暂无账号，请在「系统配置」中添加</span>';
+    return;
+  }
+  // 默认全选
+  if (selectedAccounts.size === 0) {
+    allAccounts.forEach(a => selectedAccounts.add(a.username));
+  }
+  container.innerHTML = allAccounts.map(a => {
+    const sel = selectedAccounts.has(a.username) ? " selected" : "";
+    return `<span class="account-chip${sel}" onclick="toggleAccountSelect('${a.username}')" title="点击选择/取消">
+      ${a.username}
+    </span>`;
+  }).join("");
+}
+
+function toggleAccountSelect(username) {
+  if (selectedAccounts.has(username)) {
+    selectedAccounts.delete(username);
+  } else {
+    selectedAccounts.add(username);
+  }
+  renderAccountChips();
+}
+
+function selectAllAccounts() {
+  allAccounts.forEach(a => selectedAccounts.add(a.username));
+  renderAccountChips();
+}
+
+function deselectAllAccounts() {
+  selectedAccounts.clear();
+  renderAccountChips();
+}
+
+// ── 全局刷新 ─────────────────────────────────────────────
+async function refreshAll() {
+  await loadAccounts();
+  renderAccountChips();
+  refreshStatus();
+  refreshLogs();
+}
+
+// ── 初始化 ───────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  refreshAll();
+  // 每 10 分钟自动刷新（打卡任务进行中跳过，避免覆盖进度/干扰操作）
+  setInterval(() => {
+    if (_pollTimer) return;  // 打卡轮询进行中，跳过本次自动刷新
+    refreshAll();
+  }, 600000);
+});
+</script>
+</body>
+</html>

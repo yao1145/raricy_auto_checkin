@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统配置 · raricy.com</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="space-bg" aria-hidden="true"></canvas>
+<div class="nebula nebula-a"></div>
+<div class="nebula nebula-b"></div>
+<div class="nebula nebula-c"></div>
+
+<header class="topbar">
+  <a class="brand" href="/">
+    <span class="brand-mark"></span>
+    <span class="brand-name">RARICY<span class="brand-sub">AUTO CHECK-IN</span></span>
+  </a>
+  <nav class="nav">
+    <a href="/" data-nav="index">控制中心</a>
+    <a href="/checkin" data-nav="checkin">自动打卡</a>
+    <a href="/blog" data-nav="blog">博客工具</a>
+    <a href="/config" data-nav="config">系统配置</a>
+  </nav>
+</header>
+
+<div class="container">
+  <header class="page-head">
+    <h1 class="page-title">系统<span class="accent">配置</span></h1>
+    <p class="page-sub">账号 · 站点 · API · 定时</p>
+  </header>
+
+  <!-- 站点设置 -->
+  <section class="card">
+    <div class="card-title">站点设置</div>
+    <fieldset>
+      <legend>站点 URL</legend>
+      <div class="form-group">
+        <label for="cfg_login_url">登录页 URL</label>
+        <input type="text" id="cfg_login_url" placeholder="https://raricy.com/login">
+      </div>
+      <div class="form-group">
+        <label for="cfg_checkin_url">打卡页 URL</label>
+        <input type="text" id="cfg_checkin_url" placeholder="https://raricy.com/checkin">
+      </div>
+    </fieldset>
+  </section>
+
+  <!-- 账号管理 -->
+  <section class="card">
+    <div class="card-title">账号管理</div>
+    <fieldset>
+      <legend>账号管理</legend>
+      <div id="accountList" style="margin-bottom:10px;">
+        <span style="font-size:12px;color:var(--text-dim);">加载中...</span>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:8px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px;">添加账号</div>
+        <div class="form-row">
+          <input type="text" id="newAccountUsername" placeholder="用户名" style="flex:1;">
+          <input type="password" id="newAccountPassword" placeholder="密码" style="flex:1;">
+          <button class="btn btn-primary btn-sm" onclick="addAccount()" style="flex:0 0 auto;">添加账号</button>
+        </div>
+      </div>
+    </fieldset>
+  </section>
+
+  <!-- CSS 选择器 -->
+  <section class="card">
+    <div class="card-title">CSS 选择器</div>
+    <fieldset>
+      <legend>CSS 选择器</legend>
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="cfg_username_input">用户名输入框</label>
+          <input type="text" id="cfg_username_input" placeholder="#username">
+        </div>
+        <div class="form-group">
+          <label for="cfg_password_input">密码输入框</label>
+          <input type="text" id="cfg_password_input" placeholder="#password">
+        </div>
+        <div class="form-group">
+          <label for="cfg_login_button">登录按钮</label>
+          <input type="text" id="cfg_login_button" placeholder="button[type=submit]">
+        </div>
+        <div class="form-group">
+          <label for="cfg_checkin_button">打卡按钮</label>
+          <input type="text" id="cfg_checkin_button" placeholder="#punch-btn">
+        </div>
+        <div class="form-group">
+          <label for="cfg_success_indicator">成功提示</label>
+          <input type="text" id="cfg_success_indicator" placeholder=".success-msg">
+        </div>
+        <div class="form-group">
+          <label for="cfg_already_checked">已打卡提示</label>
+          <input type="text" id="cfg_already_checked" placeholder=".already-checked">
+        </div>
+      </div>
+    </fieldset>
+  </section>
+
+  <!-- 运势卡片 -->
+  <section class="card">
+    <div class="card-title">运势卡片</div>
+    <fieldset>
+      <legend>运势卡片</legend>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="cfg_fortune_enabled" style="width:auto;" checked>
+          启用运势卡片选择
+        </label>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="cfg_fortune_modal">弹窗选择器</label>
+          <input type="text" id="cfg_fortune_modal" placeholder=".fortune-modal--open">
+        </div>
+        <div class="form-group">
+          <label for="cfg_fortune_card">卡片选择器</label>
+          <input type="text" id="cfg_fortune_card" placeholder=".fortune-card">
+        </div>
+        <div class="form-group">
+          <label for="cfg_fortune_result_container">结果容器选择器</label>
+          <input type="text" id="cfg_fortune_result_container" placeholder="#fortuneResult">
+        </div>
+        <div class="form-group">
+          <label for="cfg_fortune_result_value">结果值选择器</label>
+          <input type="text" id="cfg_fortune_result_value" placeholder="#fortuneResultValue">
+        </div>
+        <div class="form-group">
+          <label for="cfg_fortune_result_desc">结果描述选择器</label>
+          <input type="text" id="cfg_fortune_result_desc" placeholder="#fortuneResultDesc">
+        </div>
+        <div class="form-group">
+          <label for="cfg_fortune_close_btn">关闭按钮选择器</label>
+          <input type="text" id="cfg_fortune_close_btn" placeholder="#fortuneCloseBtn">
+        </div>
+        <div class="form-group">
+          <label for="cfg_fortune_index">选择第几张 (0~4 或 random)</label>
+          <select id="cfg_fortune_index">
+            <option value="random">随机选择</option>
+            <option value="0">第 1 张</option>
+            <option value="1">第 2 张</option>
+            <option value="2">第 3 张</option>
+            <option value="3">第 4 张</option>
+            <option value="4">第 5 张</option>
+          </select>
+        </div>
+      </div>
+    </fieldset>
+  </section>
+
+  <!-- API 设置 -->
+  <section class="card">
+    <div class="card-title">API 设置</div>
+    <fieldset>
+      <legend>API 设置</legend>
+      <div class="form-group">
+        <label for="cfg_login_path">登录 API 路径</label>
+        <input type="text" id="cfg_login_path" placeholder="/auth/login">
+      </div>
+      <div class="form-group">
+        <label for="cfg_checkin_path">打卡 API 路径</label>
+        <input type="text" id="cfg_checkin_path" placeholder="/checkin/api/do-checkin">
+      </div>
+      <div class="form-group">
+        <label for="cfg_fortune_path">运势 API 路径</label>
+        <input type="text" id="cfg_fortune_path" placeholder="/checkin/api/claim-fortune">
+      </div>
+    </fieldset>
+  </section>
+
+  <!-- 定时设置 -->
+  <section class="card">
+    <div class="card-title">定时设置</div>
+    <div class="form-group">
+      <label>
+        <input type="checkbox" id="scheduleEnabled" onchange="toggleSchedule()" style="width:auto;">
+        启用定时打卡
+      </label>
+    </div>
+    <div class="form-group">
+      <label>当前定时时间</label>
+      <div id="timeTags" style="min-height:32px; padding:4px 0;"></div>
+    </div>
+    <div class="form-group">
+      <label>添加新时间</label>
+      <div class="form-row">
+        <input type="time" id="newTime" value="09:00" style="flex:2;">
+        <button class="btn btn-primary btn-sm" onclick="addTime()" style="flex:1;">添加</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 保存 -->
+  <section class="card" style="text-align:center;">
+    <button class="btn btn-primary btn-lg" onclick="saveConfig()">保存配置</button>
+  </section>
+
+</div>
+
+<script src="app.js"></script>
+<script src="bg.js"></script>
+<script>
+// ── 定时设置 ─────────────────────────────────────────────
+let scheduleTimes = [];
+
+function renderTimeTags() {
+  const div = document.getElementById("timeTags");
+  if (scheduleTimes.length === 0) {
+    div.innerHTML = '<span style="color:var(--text-dim);font-size:13px;">暂无定时任务</span>';
+    return;
+  }
+  div.innerHTML = scheduleTimes.map(t => `
+    <span class="time-tag">
+      ${t}
+      <button onclick="removeTime('${t}')" title="删除">&times;</button>
+    </span>
+  `).join("");
+}
+
+async function toggleSchedule() {
+  const enabled = document.getElementById("scheduleEnabled").checked;
+  await API.post("/api/config", {
+    path: ["schedule", "enabled"],
+    value: enabled,
+  });
+  toast(enabled ? "定时打卡已启用" : "定时打卡已禁用");
+}
+
+async function addTime() {
+  const input = document.getElementById("newTime");
+  const timeVal = input.value;
+  if (!timeVal) return;
+  if (scheduleTimes.includes(timeVal)) {
+    toast("该时间已存在", "error");
+    return;
+  }
+  scheduleTimes.push(timeVal);
+  scheduleTimes.sort();
+  await API.post("/api/config", {
+    path: ["schedule", "times"],
+    value: scheduleTimes,
+  });
+  renderTimeTags();
+  input.value = "";
+  toast(`已添加定时: ${timeVal}`);
+}
+
+async function removeTime(timeVal) {
+  scheduleTimes = scheduleTimes.filter(t => t !== timeVal);
+  await API.post("/api/config", {
+    path: ["schedule", "times"],
+    value: scheduleTimes,
+  });
+  renderTimeTags();
+  toast(`已移除定时: ${timeVal}`);
+}
+
+// ── 账号管理 ─────────────────────────────────────────────
+let configAccounts = [];
+
+function renderAccountList() {
+  const container = document.getElementById("accountList");
+  if (configAccounts.length === 0) {
+    container.innerHTML = '<span style="font-size:12px;color:var(--text-dim);">暂无账号，请添加</span>';
+    return;
+  }
+  container.innerHTML = configAccounts.map((acc, i) => `
+    <div class="account-item">
+      <span class="acct-name">${escapeHtml(acc.username)}</span>
+      <span class="acct-status">
+        <span class="badge ${acc.enabled !== false ? 'badge-green' : 'badge-red'}" style="cursor:pointer;" onclick="toggleAccountEnabled(${i})" title="点击切换启用/禁用">
+          ${acc.enabled !== false ? '启用' : '禁用'}
+        </span>
+      </span>
+      <button class="btn btn-danger btn-sm" onclick="removeAccount(${i})" style="padding:3px 8px;font-size:11px;" title="删除账号">移除</button>
+    </div>
+  `).join("");
+}
+
+function addAccount() {
+  const username = document.getElementById("newAccountUsername").value.trim();
+  const password = document.getElementById("newAccountPassword").value;
+  if (!username) { toast("请输入用户名", "error"); return; }
+  if (!password) { toast("请输入密码", "error"); return; }
+  if (configAccounts.some(a => a.username === username)) {
+    toast("该账号已存在", "error");
+    return;
+  }
+  configAccounts.push({ username, password, enabled: true });
+  document.getElementById("newAccountUsername").value = "";
+  document.getElementById("newAccountPassword").value = "";
+  renderAccountList();
+  toast(`已添加账号: ${username}`);
+}
+
+function removeAccount(index) {
+  const acc = configAccounts[index];
+  configAccounts.splice(index, 1);
+  renderAccountList();
+  toast(`已移除账号: ${acc.username}`);
+}
+
+function toggleAccountEnabled(index) {
+  configAccounts[index].enabled = !(configAccounts[index].enabled !== false);
+  renderAccountList();
+}
+
+// ── 配置加载（页面初始化）─────────────────────────────────
+async function loadConfig() {
+  try {
+    const config = await API.get("/api/config");
+    document.getElementById("cfg_login_url").value = config.site?.login_url || "";
+    document.getElementById("cfg_checkin_url").value = config.site?.checkin_url || "";
+    document.getElementById("cfg_username_input").value = config.selectors?.username_input || "";
+    document.getElementById("cfg_password_input").value = config.selectors?.password_input || "";
+    document.getElementById("cfg_login_button").value = config.selectors?.login_button || "";
+    document.getElementById("cfg_checkin_button").value = config.selectors?.checkin_button || "";
+    document.getElementById("cfg_success_indicator").value = config.selectors?.success_indicator || "";
+    document.getElementById("cfg_already_checked").value = config.selectors?.already_checked_in || "";
+    // API 路径
+    document.getElementById("cfg_login_path").value = config.api?.login_path || "/auth/login";
+    document.getElementById("cfg_checkin_path").value = config.api?.checkin_path || "/checkin/api/do-checkin";
+    document.getElementById("cfg_fortune_path").value = config.api?.fortune_path || "/checkin/api/claim-fortune";
+    // 运势卡片配置
+    document.getElementById("cfg_fortune_enabled").checked = config.fortune?.enabled ?? true;
+    document.getElementById("cfg_fortune_modal").value = config.fortune?.modal_selector || ".fortune-modal--open";
+    document.getElementById("cfg_fortune_card").value = config.fortune?.card_selector || ".fortune-card";
+    document.getElementById("cfg_fortune_result_container").value = config.fortune?.result_container_selector || "#fortuneResult";
+    document.getElementById("cfg_fortune_result_value").value = config.fortune?.result_value_selector || "#fortuneResultValue";
+    document.getElementById("cfg_fortune_result_desc").value = config.fortune?.result_desc_selector || "#fortuneResultDesc";
+    document.getElementById("cfg_fortune_close_btn").value = config.fortune?.close_button_selector || "#fortuneCloseBtn";
+    document.getElementById("cfg_fortune_index").value = config.fortune?.card_index || "random";
+    // 定时设置
+    document.getElementById("scheduleEnabled").checked = config.schedule?.enabled ?? true;
+    scheduleTimes = config.schedule?.times || [];
+    // 加载账号列表
+    configAccounts = config.accounts || [];
+    // 兼容旧配置
+    if (configAccounts.length === 0 && config.site?.username) {
+      configAccounts = [{ username: config.site.username, password: "****", enabled: true }];
+    }
+    renderAccountList();
+    renderTimeTags();
+  } catch (e) {
+    toast("加载配置失败: " + e.message, "error");
+  }
+}
+
+// ── 保存配置 ─────────────────────────────────────────────
+async function saveConfig() {
+  const get = id => document.getElementById(id).value;
+  const getBool = id => document.getElementById(id).checked;
+
+  // 构建账号数组：新增账号保留真实密码，已有账号若密码为 **** 则保留原密码
+  const accounts = configAccounts.map(acc => ({
+    username: acc.username,
+    password: acc.password || "****",  // "****" 时服务端保留原密码
+    enabled: acc.enabled !== false,
+  }));
+
+  const fullConfig = {
+    site: {
+      login_url: get("cfg_login_url"),
+      checkin_url: get("cfg_checkin_url"),
+    },
+    accounts: accounts,
+    selectors: {
+      username_input: get("cfg_username_input"),
+      password_input: get("cfg_password_input"),
+      login_button: get("cfg_login_button"),
+      checkin_button: get("cfg_checkin_button"),
+      success_indicator: get("cfg_success_indicator"),
+      already_checked_in: get("cfg_already_checked"),
+    },
+    schedule: {
+      times: scheduleTimes,
+      timezone: "Asia/Shanghai",
+      enabled: document.getElementById("scheduleEnabled").checked,
+    },
+    fortune: {
+      enabled: getBool("cfg_fortune_enabled"),
+      modal_selector: get("cfg_fortune_modal"),
+      card_selector: get("cfg_fortune_card"),
+      result_container_selector: get("cfg_fortune_result_container"),
+      result_value_selector: get("cfg_fortune_result_value"),
+      result_desc_selector: get("cfg_fortune_result_desc"),
+      close_button_selector: get("cfg_fortune_close_btn"),
+      card_index: get("cfg_fortune_index"),
+      modal_wait_timeout: 10,
+    },
+    api: {
+      login_path: get("cfg_login_path"),
+      checkin_path: get("cfg_checkin_path"),
+      fortune_path: get("cfg_fortune_path"),
+    },
+  };
+
+  try {
+    await API.post("/api/config", fullConfig);
+
+    toast("配置已保存，调度器已重启");
+    loadConfig();
+  } catch (e) {
+    toast("保存配置失败: " + e.message, "error");
+  }
+}
+
+// ── 初始化 ───────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  loadConfig();
+});
+</script>
+</body>
+</html>
