@@ -28,8 +28,8 @@
   const meteors = [];          // 活跃流星
 
   function resize() {
-    w = canvas.clientWidth;
-    h = canvas.clientHeight;
+    w = window.innerWidth || canvas.clientWidth;
+    h = window.innerHeight || canvas.clientHeight;
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -89,8 +89,9 @@
       if (d2 < inf2) {
         const dist = Math.sqrt(d2);
         const blend = 1 - dist / INFLUENCE_RADIUS; // 中心=1，边缘=0
-        // 距鼠标越近，绕轨道越快：边缘 1 倍 → 中心 3.5 倍（平滑连续）
-        p.angle += baseRate * blend * 2.5 * dt;
+        // 距鼠标越近，绕轨道越快：边缘 1× → 中心 7×，二次曲线把加速集中在近处
+        const boost = 1 + blend * blend * 6;
+        p.angle += baseRate * boost * dt;
         const ox = mouse.x + p.offsetX; // 每个粒子独立的圆心（相对鼠标偏移）
         const oy = mouse.y + p.offsetY;
         const tx = ox + p.orbitR * Math.cos(p.angle);
@@ -184,12 +185,14 @@
     requestAnimationFrame(loop);
   }
 
-  canvas.addEventListener("pointermove", function (e) {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - rect.left;
-    mouse.y = e.clientY - rect.top;
+  // canvas 设置了 pointer-events: none（styles.css），监听 canvas 收不到事件；
+  // pointermove 会冒泡到 window，且 canvas 铺满视口（从 0,0 开始），
+  // 所以直接用视口坐标 e.clientX/e.clientY 就是 canvas 坐标。
+  window.addEventListener("pointermove", function (e) {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
   });
-  canvas.addEventListener("pointerleave", function () {
+  document.documentElement.addEventListener("pointerleave", function () {
     mouse.x = -9999;
     mouse.y = -9999;
   });
