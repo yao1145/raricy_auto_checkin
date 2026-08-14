@@ -1,4 +1,6 @@
-# 🔔 raricy.com 自动打卡系统
+# raricy.com 自动打卡系统
+
+一个基于 **Python + requests** 的纯 HTTP API 自动化操作台，面向 raricy.com 提供每日自动打卡与博客辅助能力。全程调用网站自身的 HTTP 接口，**零 Selenium / ChromeDriver 依赖**，支持多账号、定时执行、运势卡片抽取、博客目录扫描 / 内容抓取 / 批量点赞，并附带一套科幻风格的四面板 Web 控制台。
 
 ---
 
@@ -6,39 +8,39 @@
 
 ### 1.1 这是什么
 
-一个基于 **Python + requests** 的纯 HTTP API 自动化打卡系统，用于 raricy.com 网站的每日签到。它直接调用网站自身的 HTTP 接口完成登录与打卡，**不依赖任何浏览器或 ChromeDriver**，支持多账号、定时执行、运势卡片抽取和 Web 控制面板管理。
+raricy.com 自动打卡系统通过 `requests` 直接调用网站 HTTP API 完成登录与打卡，规避了浏览器与驱动版本管理带来的维护负担。系统由 **Flask + APScheduler** 驱动，前端是纯静态多页面控制台，数据与日志落在本地 JSON / SQLite 中。
 
 ### 1.2 功能特性
 
-- ✅ **自动打卡** — 直接调用网站 HTTP API 完成登录和签到
-- 👥 **多账号支持** — 支持多个账号，可选择指定账号打卡或一键批量打卡
-- 🔮 **运势卡片抽取** — 打卡后自动抽取运势卡片，记录运势结果值
-- ⏰ **定时执行** — APScheduler 支持多个每日定时任务，适配不同签到时段
-- 🖥 **Web 控制面板** — 单页 HTML 管理界面：状态查看 / 手动打卡 / 配置编辑 / 日志查看
-- ⚙ **高度可配置** — URL、API 路径、定时规则通过 `config.json` 管理，账号通过 `accounts.json` 管理
-- 📡 **实时进度** — 打卡过程实时显示"正在登录 → 登录成功 → 正在打卡 → 打卡成功"步骤动画
-- 🖱 **一键打卡** — 桌面快捷方式一键启动系统（详见使用指南）
-- 📚 **博客工具** — 目录扫描 / 内容抓取 / 批量点赞，纯 requests + SQLite 存储（详见「三、博客管理」）
+- **自动打卡** —— 直接调用网站 HTTP API 完成登录与签到，无浏览器依赖
+- **多账号支持** —— 多个账号可分别启用/禁用，支持按需勾选或一键批量打卡
+- **定时执行** —— APScheduler 支持多个每日定时点，适配不同签到时段
+- **运势卡片** —— 打卡后自动抽取运势卡片并记录结果
+- **实时进度** —— 打卡 / 博客任务异步执行，前端 500ms 轮询展示步骤与进度条
+- **博客工具** —— 目录扫描、内容抓取、批量点赞，SQLite 持久化，支持筛选与排序
+- **Web 控制台** —— 四面板（控制中心 / 自动打卡 / 博客工具 / 系统配置）+ 科幻动态背景
+- **高度可配置** —— 站点、选择器、定时、运势、API 路径均可通过配置面板在线修改
 
 ### 1.3 技术架构
 
 ```
-APScheduler 定时任务 或 Web 控制面板手动触发
+APScheduler 定时任务 或 Web 控制台手动触发
         │
         ▼
 CheckinEngine.execute()
         │  requests.Session
-        ├─ POST /auth/login           → 登录（表单优先，JSON 兜底）
-        ├─ POST /checkin/api/do-checkin → 打卡
+        ├─ POST /auth/login              → 登录（表单优先，JSON 兜底）
+        ├─ POST /checkin/api/do-checkin  → 打卡
         └─ POST /checkin/api/claim-fortune → 运势卡片（可选）
         │
         ▼
 写入 runtime/logs/checkin_log.json
 ```
 
-- **Flask** 提供 Web 控制面板与 HTTP API
+- **Flask** 提供 Web 控制台与 HTTP API
 - **APScheduler** 管理每日定时打卡
-- **纯 requests** 完成所有页面交互，无 Selenium 依赖
+- **requests** 完成全部页面交互，无 Selenium 依赖
+- **beautifulsoup4** 解析博客目录，**sqlite3** 持久化文章与点赞记录
 
 ### 1.4 项目结构
 
@@ -47,25 +49,30 @@ raricy_auto_checkin/
 ├── run.py                      # 项目入口（启动 Flask + 调度器）
 ├── launcher.py                 # 桌面快捷方式启动器（检测服务 → 启动/打开面板）
 ├── start_checkin.bat           # 快捷方式入口脚本（纯 ASCII，调用 launcher.py）
-├── .gitignore                  # Git 忽略规则
 ├── README.md                   # 本文件
 ├── CLAUDE.md                   # Claude Code 指引
 ├── favicon.ico                 # 站点图标（同时作为快捷方式图标）
 ├── backend/
 │   ├── __init__.py             # 包标记
+│   ├── app.py                  # Flask API 服务 + 进度追踪 + 前端路由
 │   ├── checkin.py              # requests 打卡引擎（核心逻辑）+ 配置读取
 │   ├── client.py               # 共享纯 requests 登录客户端（打卡/博客复用）
 │   ├── blog.py                 # 博客引擎：目录扫描 / 内容抓取 / 批量点赞
 │   ├── store.py                # SQLite 存储层（文章 + 点赞记录）
 │   ├── progress.py             # 通用任务进度存储（内存）
 │   ├── scheduler.py            # APScheduler 定时调度器
-│   ├── app.py                  # Flask API 服务 + 进度追踪
-│   ├── config.json             # 站点/定时/运势/API 配置（不含账号）
+│   ├── config.json             # 站点/选择器/定时/运势/API 配置（不含账号）
 │   ├── accounts.json           # 账号列表（含密码，已 gitignore，不提交）
 │   └── requirements.txt        # Python 依赖
 ├── frontend/
-│   ├── index.html              # 打卡控制面板
-│   └── blog.html               # 博客工具面板
+│   ├── index.html              # 控制中心（状态总览 + 功能导航）
+│   ├── checkin.html            # 自动打卡面板
+│   ├── blog.html               # 博客工具面板
+│   ├── config.html             # 系统配置面板
+│   ├── styles.css              # 全局样式（设计令牌 + 组件 + 星云背景）
+│   ├── app.js                  # 共享工具（API 客户端 / toast / 导航高亮）
+│   ├── bg.js                   # 粒子星野 + 流星动态背景
+│   └── favicon.ico             # 站点图标
 └── runtime/                    # 运行时生成（自动创建，已 gitignore）
     ├── logs/                   # 打卡日志 JSON
     └── blog.db                 # 博客文章与点赞 SQLite 数据库
@@ -91,53 +98,16 @@ cd raricy_auto_checkin
 pip install -r backend/requirements.txt
 ```
 
-### 2.3 配置账号
-
-账号保存在 `backend/accounts.json`（**该文件已加入 `.gitignore`，不会提交到 Git**），格式为账号数组：
-
-```json
-[
-  {
-    "username": "你的用户名",
-    "password": "你的密码",
-    "enabled": true
-  },
-  {
-    "username": "账号2",
-    "password": "密码2",
-    "enabled": false
-  }
-]
-```
-
-> - `enabled: false` 的账号会被跳过，不参与打卡。
-> - 也可以通过 Web 控制面板「账号管理」修改，密码自动脱敏显示。
-> - 首次使用：系统读取 `accounts.json`；若文件不存在则回退到 `config.json` 内嵌的 `accounts`（旧版兼容）。
-
-### 2.4 启动系统
+### 2.3 启动系统
 
 **方式一：桌面一键打卡（推荐）**
 
 双击桌面「一键打卡」快捷方式，脚本自动判断：
 
-- 服务**未运行** → 启动服务并自动打开浏览器控制面板
-- 服务**已在运行** → 直接打开控制面板，不重复启动
+- 服务**未运行** → 启动服务并自动打开浏览器控制台
+- 服务**已在运行** → 直接打开控制台，不重复启动
 
-> 快捷方式图标指向项目根目录的 `favicon.ico`。
-
-#### 如何创建「一键打卡」快捷方式
-
-快捷方式由两部分组成，缺一不可：
-
-| 文件 | 位置 | 作用 |
-| ---- | ---- | ---- |
-| `start_checkin.bat` | 项目根目录 | 入口脚本（纯 ASCII，调用 `launcher.py`） |
-| `一键打卡.lnk` | 桌面 | Windows 快捷方式，双击触发上面的 bat |
-
-**创建步骤（PowerShell）：**
-
-1. 确认项目根目录存在 `start_checkin.bat`（本仓库已包含，通常无需新建）。
-2. 在 PowerShell 中执行以下命令创建快捷方式（把下面的 `<项目根目录>` 替换为你的实际路径）：
+快捷方式由 `start_checkin.bat`（纯 ASCII，内部用 `%~dp0` 自动定位自身目录，不依赖固定路径）+ 桌面 `一键打卡.lnk` 组成。创建方法（PowerShell，`<项目根目录>` 替换为实际路径）：
 
 ```powershell
 $ws = New-Object -ComObject WScript.Shell
@@ -149,96 +119,74 @@ $lnk.IconLocation = '<项目根目录>\favicon.ico'
 $lnk.Save()
 ```
 
-3. 若桌面图标未即时刷新，按 `F5` 刷新或重启资源管理器即可。
-
-> - `<项目根目录>` 即本项目所在目录的绝对路径（含 `start_checkin.bat` 的那一层）。
-> - `start_checkin.bat` 使用 `%~dp0` 自动定位自身所在目录，因此不依赖固定路径，项目移动到任意位置都能正常工作。
-
 **方式二：命令行启动**
 
 ```bash
 python run.py
 ```
 
-默认启动在 `http://127.0.0.1:5000`，自动打开浏览器访问控制面板。
-
-**命令行参数：**
+默认启动在 `http://127.0.0.1:5000`，自动打开浏览器访问控制台。
 
 | 参数               | 说明                       |
 | ------------------ | -------------------------- |
-| `--port 8080`    | 指定服务端口（默认 5000）  |
-| `--host 0.0.0.0` | 绑定地址（默认 127.0.0.1） |
-| `--debug`        | Flask 调试模式（热重载）   |
-| `--no-browser`   | 不自动打开浏览器           |
+| `--port 8080`      | 指定服务端口（默认 5000）  |
+| `--host 0.0.0.0`   | 绑定地址（默认 127.0.0.1） |
+| `--debug`          | Flask 调试模式（热重载）   |
+| `--no-browser`     | 不自动打开浏览器           |
 
-> 调试提示：设置环境变量 `LAUNCHER_NO_BROWSER=1` 后再启动，可禁止 `launcher.py` 自动打开浏览器。
+### 2.4 控制台导航
 
-### 2.5 使用控制面板
+浏览器打开后进入「控制中心」，顶部导航可切换到四个面板：
 
-浏览器打开后，可以看到控制面板：
+| 面板       | 路径        | 用途                                             |
+| ---------- | ----------- | ------------------------------------------------ |
+| 控制中心   | `/`         | 今日状态总览 + 各功能入口                        |
+| 自动打卡   | `/checkin`  | 状态查看、账号选择、手动/批量打卡、日志与定时     |
+| 博客工具   | `/blog`     | 博客目录扫描、内容抓取、批量点赞                 |
+| 系统配置   | `/config`   | 账号、站点、选择器、定时、运势、API 路径集中管理 |
 
-- **状态面板** — 查看各账号今日打卡状态、下次定时时间
-- **账号选择** — 勾选要打卡的账号，支持全选/取消全选
-- **🖐 打卡所选** — 为选中的账号逐一打卡（实时显示进度动画）
-- **⚡ 批量全部** — 一键为所有启用账号打卡
-- **⏰ 定时设置** — 添加/删除每日打卡时间点（如 09:00, 18:00）
-- **⚙ 配置** — 编辑 URL、API 路径、定时、运势等配置
-- **日志列表** — 查看历史打卡记录（默认5条，可展开至50条）
+---
 
-### 2.6 配置说明
+## 三、打卡管理
 
-站点、定时、运势、API 路径等配置在 `backend/config.json`：
+### 3.1 控制面板
 
-```json
-{
-  "site": {
-    "login_url": "https://raricy.com/auth/login",
-    "checkin_url": "https://raricy.com/checkin"
-  },
-  "schedule": {
-    "times": ["13:00"],
-    "timezone": "Asia/Shanghai",
-    "enabled": true
-  },
-  "fortune": {
-    "enabled": true,
-    "card_index": "random"
-  },
-  "api": {
-    "login_path": "/auth/login",
-    "checkin_path": "/checkin/api/do-checkin",
-    "fortune_path": "/checkin/api/claim-fortune"
-  }
-}
+「自动打卡」面板（`/checkin`）包含：
+
+- **今日状态** —— 各账号今日是否已打卡、下次定时时间、调度器开关
+- **账号选择** —— 账号 chip 可点选/取消，支持全选、取消全选；已禁用账号置灰并标注「已禁用」
+- **打卡所选** —— 为选中的账号逐一打卡，实时展示步骤动画
+- **批量全部** —— 一键为所有启用账号打卡
+- **打卡记录** —— 历史日志表格（默认 5 条，可展开至 50 条）
+
+> 选择已禁用账号打卡时，右上角会弹出「账号 XX 已被禁用」提示，并自动跳过该账号。
+
+### 3.2 打卡流程
+
+```
+POST /auth/login (username + password)
+  → 获取 Session cookie
+  → POST /checkin/api/do-checkin
+  → 检测响应：已打卡 / 打卡成功
+  → (可选) POST /checkin/api/claim-fortune
+  → 记录日志 → 返回结果
 ```
 
-| 配置段       | 说明                                                      |
-| ------------ | --------------------------------------------------------- |
-| `site`     | 登录页和打卡页 URL                                        |
-| `schedule` | 定时打卡时间列表、时区、启用开关                          |
-| `fortune`  | 运势卡片：是否启用、选牌策略（`random` 或数字索引）       |
-| `api`      | 各 API 路径（登录/打卡/运势），默认值通常无需修改         |
+### 3.3 定时打卡
 
-> **账号不在此文件**：账号在 `accounts.json`，通过 Web 控制面板「账号管理」或直接编辑该文件修改。
->
-> **API 路径说明**：所有打卡操作通过网站自身的 HTTP API 完成，路径可配置。如果 raricy.com 接口地址发生变化，修改 `api` 段即可。
+定时时间点通过「系统配置」面板的「定时设置」卡片维护（或直接编辑 `config.json` 的 `schedule` 段）。APScheduler 在后台按配置的每日时间点自动触发打卡。
 
-### 2.7 HTTP API 接口
+### 3.4 打卡 API
 
-| 方法     | 路径                                | 说明                               |
-| -------- | ----------------------------------- | ---------------------------------- |
-| `GET`  | `/`                               | 返回打卡控制面板                  |
-| `GET`  | `/api/health`                     | 健康检查                           |
-| `GET`  | `/api/status`                     | 今日各账号打卡状态 + 下次定时时间  |
-| `POST` | `/api/checkin`                    | 手动触发打卡（异步，返回 task_id） |
-| `GET`  | `/api/checkin/progress/<task_id>` | 轮询打卡进度                       |
-| `GET`  | `/api/logs?limit=50`              | 打卡历史记录                       |
-| `GET`  | `/api/accounts`                   | 获取所有账号列表（密码脱敏）       |
-| `POST` | `/api/accounts`                   | 更新账号列表（写入 accounts.json） |
-| `GET`  | `/api/config`                     | 获取当前配置（密码脱敏）           |
-| `POST` | `/api/config`                     | 更新配置（支持路径更新或整体替换） |
+| 方法   | 路径                                | 说明                               |
+| ------ | ----------------------------------- | ---------------------------------- |
+| `GET`  | `/api/health`                       | 健康检查                           |
+| `GET`  | `/api/status`                       | 今日各账号打卡状态 + 下次定时时间  |
+| `POST` | `/api/checkin`                      | 手动触发打卡（异步，返回 task_id） |
+| `GET`  | `/api/checkin/progress/<task_id>`   | 轮询打卡进度                       |
+| `GET`  | `/api/logs?limit=50`                | 打卡历史记录                       |
 
-**手动打卡：**
+**手动打卡示例：**
 
 ```bash
 # 指定账号打卡
@@ -250,110 +198,167 @@ curl -X POST http://127.0.0.1:5000/api/checkin \
 curl -X POST http://127.0.0.1:5000/api/checkin \
   -H "Content-Type: application/json" \
   -d '{"accounts": ["all"]}'
-
-# 轮询进度
-curl http://127.0.0.1:5000/api/checkin/progress/<task_id>
 ```
 
-### 2.8 打卡流程
+### 3.5 常见问题
 
-系统完整的自动化流程（纯 HTTP API）：
+**登录失败** —— 检查 `backend/accounts.json` 中该账号的用户名和密码。
 
-```
-POST /auth/login (username + password)
-  → Session cookie 获取成功
-  → POST /checkin/api/do-checkin
-  → 检测响应：已打卡 / 打卡成功
-  → (可选) POST /checkin/api/claim-fortune (chosen_index)
-  → 记录日志 → 返回结果
-```
+**端口被占用** —— `python run.py --port 8080` 换端口。
 
-### 2.9 常见问题
-
-**登录失败**
-
-```
-登录失败：账号 xxx 的用户名或密码错误
-```
-
-**解决**：检查 `backend/accounts.json` 中该账号的用户名和密码是否正确。
-
-**API 路径变更**
-
-如果 raricy.com 接口地址发生变化，在控制面板「配置 → API 设置」中更新对应路径，或直接编辑 `config.json` 的 `api` 段。
-
-**端口被占用**
-
-```bash
-python run.py --port 8080    # 换一个端口
-```
-
-**网络异常**
-
-检查服务器是否能正常访问 raricy.com。项目默认超时 15 秒，超时会返回"网络异常"提示。
+**网络异常** —— 确认服务器可访问 raricy.com；默认超时 15 秒，超时返回「网络异常」提示。
 
 ---
 
-## 三、博客管理
+## 四、博客管理
 
-### 3.1 简介
+### 4.1 简介
 
-博客工具是集成在打卡系统中的一套博客辅助功能，同样基于 **纯 requests**（无浏览器依赖），用于对 raricy.com 博客区（聪明山）进行自动化操作：
+博客工具基于**纯 requests**（无浏览器依赖），对 raricy.com 博客区进行自动化操作，数据持久化在 `runtime/blog.db`（SQLite）：
 
-- 🔄 **目录扫描** — 逐页爬取博客列表，将文章（标题/作者/分类/描述/点赞数）收录到本地数据库
-- ⬇ **内容抓取** — 抓取指定文章的正文内容，保存供离线查看
-- 👍 **批量点赞** — 对选中的文章批量点赞，支持多轮重试与已赞跳过
+- **目录扫描** —— 逐页爬取博客列表，收录文章（标题/作者/分类/描述/点赞数）
+- **内容抓取** —— 抓取指定文章正文，供离线查看
+- **批量点赞** —— 对选中文章批量点赞，支持重试与已赞跳过
 
-数据存储在 `runtime/blog.db`（SQLite，标准库 `sqlite3`），无需额外配置；所有操作异步执行并实时展示进度条。
+所有操作异步执行并实时展示进度。
 
-### 3.2 打开博客工具
+### 4.2 使用步骤
 
-启动系统后，浏览器访问 `http://127.0.0.1:5000/blog`，或从打卡面板进入博客工具页。
+1. **扫描目录** —— 点击「扫描目录」，系统使用首个启用账号登录并逐页爬取。
+2. **筛选 / 排序** —— 按作者、分类、点赞数、内容状态筛选，点击表头排序。
+3. **抓取内容** —— 勾选文章后点击「抓取内容」（已抓取的可点「查看」阅读）。
+4. **批量点赞** —— 选择点赞账号，勾选文章后点击「点赞所选」。
+5. **清空数据库** —— 点击「清空数据库」删除全部文章与点赞记录。
 
-### 3.3 使用步骤
+### 4.3 每日点赞额度
 
-1. **扫描目录** — 点击「🔄 扫描目录」，系统使用第一个启用账号登录并逐页爬取博客列表，收录文章。
-2. **筛选 / 排序** — 按作者、分类、点赞数、内容状态筛选，点击表头进行排序。
-3. **抓取内容** — 勾选文章后点击「⬇ 抓取内容」，抓取正文（已抓取的文章可点「查看」阅读）。
-4. **批量点赞** — 选择点赞账号，勾选文章后点击「👍 点赞所选」。
-5. **清空数据库** — 点击「🗑 清空数据库」删除全部文章与点赞记录。
+raricy.com 单账号每日最多点赞 **100** 次，系统会：
 
-### 3.4 每日点赞额度
-
-raricy.com 单个账号每日最多点赞 **100** 次，系统会：
-
-- 在账号标签上实时显示该账号今日「已用 / 总量」（如 `12/100`），并在悬停提示中显示剩余额度
-- 当某账号可用额度归零时，自动禁用点赞按钮，无法再发起点赞
+- 在账号标签上实时显示该账号今日「已用 / 总量」，悬停提示剩余额度
+- 某账号额度归零时自动禁用点赞按钮
 - 点赞完成后在结果区展示本次消耗与今日剩余额度
 
-### 3.5 博客 API
+### 4.4 博客 API
 
-| 方法   | 路径                              | 说明                                   |
-| ------ | --------------------------------- | -------------------------------------- |
-| `GET`  | `/blog`                           | 博客工具页面                           |
-| `GET`  | `/api/blog/articles/all`          | 一次性加载全部文章（支持筛选/排序）    |
-| `GET`  | `/api/blog/articles`              | 分页文章列表                           |
-| `GET`  | `/api/blog/meta`                  | 作者 / 分类下拉选项                    |
-| `GET`  | `/api/blog/article/<id>`          | 单篇文章详情（含正文）                 |
-| `GET`  | `/api/blog/like-stats`            | 各账号今日点赞额度统计                 |
-| `POST` | `/api/blog/scan`                  | 扫描博客目录（异步，返回 task_id）     |
-| `POST` | `/api/blog/fetch`                 | 抓取文章内容（异步，body: article_ids）|
+| 方法   | 路径                              | 说明                                          |
+| ------ | --------------------------------- | --------------------------------------------- |
+| `GET`  | `/blog`                           | 博客工具页面                                  |
+| `GET`  | `/api/blog/articles/all`          | 一次性加载全部文章（支持筛选/排序）           |
+| `GET`  | `/api/blog/articles`              | 分页文章列表                                  |
+| `GET`  | `/api/blog/meta`                  | 作者 / 分类下拉选项                           |
+| `GET`  | `/api/blog/article/<id>`          | 单篇文章详情（含正文）                        |
+| `GET`  | `/api/blog/like-stats`            | 各账号今日点赞额度统计                        |
+| `POST` | `/api/blog/scan`                  | 扫描博客目录（异步，返回 task_id）            |
+| `POST` | `/api/blog/fetch`                 | 抓取文章内容（异步，body: article_ids）       |
 | `POST` | `/api/blog/like`                  | 批量点赞（异步，body: article_ids + account） |
-| `POST` | `/api/blog/clear`                 | 清空文章与点赞记录                     |
-| `GET`  | `/api/blog/progress/<task_id>`    | 轮询博客任务进度                       |
-
-### 3.6 配置
-
-博客相关 API 路径可在 `backend/config.json` 的 `api` 段中配置（均为**可选**，缺省时使用默认值）：
-
-| 键                   | 默认值               | 说明               |
-| -------------------- | -------------------- | ------------------ |
-| `blog_listing_path`  | `/blog`              | 博客目录列表路径   |
-| `blog_content_path`  | `/blog/spider/blogs` | 文章正文接口路径   |
-| `blog_like_path`     | `/blog`              | 点赞接口基础路径   |
+| `POST` | `/api/blog/clear`                 | 清空文章与点赞记录                            |
+| `GET`  | `/api/blog/progress/<task_id>`    | 轮询博客任务进度                              |
 
 ---
 
-## 许可
+## 五、配置管理
+
+### 5.1 配置文件分工
+
+| 文件                    | 内容                                 | 是否提交到 Git |
+| ----------------------- | ------------------------------------ | -------------- |
+| `backend/config.json`   | 站点、选择器、定时、运势、API 路径   | 是             |
+| `backend/accounts.json` | 账号列表（用户名 / 密码 / 启用）     | 否（含密码）   |
+
+账号与配置分离：`load_config()` 读取 `config.json` 后用 `accounts.json` 覆盖 `accounts` 字段；`save_config()` 反向把 `accounts` 拆出写入 `accounts.json`。API 返回密码时统一脱敏为 `****`，保存 `****` 表示保留原密码。
+
+### 5.2 config.json 结构
+
+```json
+{
+  "site": {
+    "login_url": "https://raricy.com/auth/login",
+    "checkin_url": "https://raricy.com/checkin"
+  },
+  "selectors": {
+    "username_input": "#username",
+    "password_input": "#password",
+    "login_button": "#submitBtn",
+    "checkin_button": "#checkinBtn",
+    "success_indicator": ".fortune-modal--open",
+    "already_checked_in": ".checkin-button:disabled, button[disabled]#checkinBtn"
+  },
+  "schedule": {
+    "times": ["13:00"],
+    "timezone": "Asia/Shanghai",
+    "enabled": true
+  },
+  "fortune": {
+    "enabled": true,
+    "modal_selector": ".fortune-modal--open",
+    "card_selector": ".fortune-card",
+    "result_container_selector": "#fortuneResult",
+    "result_value_selector": "#fortuneResultValue",
+    "result_desc_selector": "#fortuneResultDesc",
+    "close_button_selector": "#fortuneCloseBtn",
+    "card_index": "random",
+    "modal_wait_timeout": 10
+  },
+  "api": {
+    "login_path": "/auth/login",
+    "checkin_path": "/checkin/api/do-checkin",
+    "fortune_path": "/checkin/api/claim-fortune",
+    "blog_listing_path": "/blog",
+    "blog_content_path": "/blog/spider/blogs",
+    "blog_like_path": "/blog"
+  }
+}
+```
+
+| 配置段      | 说明                                                              |
+| ----------- | ----------------------------------------------------------------- |
+| `site`      | 登录页与打卡页 URL                                                |
+| `selectors` | 旧版页面选择器（页面交互已改用 HTTP API，此段为兼容保留）          |
+| `schedule`  | 定时打卡时间列表、时区、启用开关                                  |
+| `fortune`   | 运势卡片：启用开关、选择器、选牌策略（`random` 或数字索引）        |
+| `api`       | 各 API 路径（登录/打卡/运势 + 博客三个路径），缺省时使用默认值     |
+
+> `selectors` 与 `fortune` 的大部分选择器字段为历史遗留，当前仅 `fortune.enabled` 与 `fortune.card_index` 仍被引擎读取；页面交互全部走 `api` 段的 HTTP 路径。
+
+### 5.3 accounts.json 结构
+
+```json
+[
+  { "username": "你的用户名", "password": "你的密码", "enabled": true },
+  { "username": "账号2", "password": "密码2", "enabled": false }
+]
+```
+
+- `enabled: false` 的账号被跳过，不参与打卡。
+- 首次使用若 `accounts.json` 缺失，会回退到 `config.json` 内嵌的 `accounts`（旧版兼容）。
+
+### 5.4 配置 API
+
+| 方法   | 路径            | 说明                                        |
+| ------ | --------------- | ------------------------------------------- |
+| `GET`  | `/api/config`   | 获取当前配置（密码脱敏）                    |
+| `POST` | `/api/config`   | 更新配置（支持 `{path, value}` 路径更新或整体替换） |
+| `GET`  | `/api/accounts` | 获取账号列表（密码脱敏）                    |
+| `POST` | `/api/accounts` | 更新账号列表（写入 accounts.json）          |
+
+> 通过「系统配置」面板保存后，后端会自动 `scheduler.restart()` 使定时任务生效。
+
+---
+
+## 许可（License）
 
 MIT License
+
+Copyright (c) 2026 yaozitao
+
+特此免费授予任何获得本软件及相关文档文件副本的人不受限制地处理本软件的权利，包括但不限于使用、复制、修改、合并、发布、分发、再许可和/或出售本软件副本，以及允许获得本软件的人这样做，但须符合以下条件：
+
+上述版权声明和本许可声明应包含在本软件的所有副本或主要部分中。
+
+本软件按「原样」提供，不附带任何明示或暗示的保证，包括但不限于对适销性、特定用途适用性和非侵权的保证。
+
+---
+
+## 贡献者（Contributor）
+
+- [yaozitao](https://github.com/yao1145) —— 项目作者与主要维护者
