@@ -1,6 +1,6 @@
 // bg.js — 低开销科幻背景：漂移星野 + 鼠标轨道粒子 + 随机流星
 // 星云旋转由 styles.css 的 CSS transform 完成（GPU 合成），
-// 本脚本仅负责 canvas 粒子，粒子数保持低位，页面隐藏时暂停渲染。
+// 本脚本仅负责 canvas 粒子，DPR 封顶 2 且页面隐藏时暂停渲染以控制开销。
 // 鼠标靠近时，粒子绕各自独立的轨道（半径/周期/圆心偏移均不同）
 // 做圆周运动，形成"科技感"的环绕效果；偶尔划过流星，同样遵循低开销与暂停规则。
 (function () {
@@ -12,7 +12,7 @@
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-  const COUNT = 80;            // 粒子数（刻意压低以降低开销）
+  const COUNT = 500;           // 粒子数（DPR 封顶 2 + 隐藏暂停，控制开销）
   const LINK_DIST = 150;       // 鼠标连线半径（px）
   const INFLUENCE_RADIUS = 150; // 轨道影响半径（px）
   const MAX_METEORS = 3;       // 同屏流星数量上限（压低开销）
@@ -89,8 +89,8 @@
       if (d2 < inf2) {
         const dist = Math.sqrt(d2);
         const blend = 1 - dist / INFLUENCE_RADIUS; // 中心=1，边缘=0
-        // 距鼠标越近，绕轨道越快：边缘 1× → 中心 7×，二次曲线把加速集中在近处
-        const boost = 1 + blend * blend * 6;
+        // 距鼠标越近，绕轨道越快：边缘 1× → 中心 2.5×（线性平滑）
+        const boost = 1 + blend * 1.5;
         p.angle += baseRate * boost * dt;
         const ox = mouse.x + p.offsetX; // 每个粒子独立的圆心（相对鼠标偏移）
         const oy = mouse.y + p.offsetY;
