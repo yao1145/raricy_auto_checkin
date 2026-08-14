@@ -13,8 +13,8 @@
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
   const COUNT = 500;           // 粒子数（DPR 封顶 2 + 隐藏暂停，控制开销）
-  const LINK_DIST = 150;       // 鼠标连线半径（px）
-  const INFLUENCE_RADIUS = 150; // 轨道影响半径（px）
+  const LINK_DIST = 100;       // 鼠标连线半径（px）
+  const INFLUENCE_RADIUS = 100; // 轨道影响半径（px）
   const MAX_METEORS = 3;       // 同屏流星数量上限（压低开销）
 
   let w = 0;
