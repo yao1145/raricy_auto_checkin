@@ -177,6 +177,7 @@ function renderAccountChips() {
   }
   container.innerHTML = allAccounts.map(a => {
     const sel = a.username === selectedAccount ? " selected" : "";
+    const disabled = a.enabled === false;
     const st = likeStats[a.username] || {};
     const used = st.used || 0;
     const available = (st.available != null) ? st.available : likeLimit;
@@ -184,8 +185,8 @@ function renderAccountChips() {
       ? `<span style="color:var(--red);">${used}/${likeLimit}</span>`
       : `<span style="color:var(--text-dim);">${used}/${likeLimit}</span>`;
     // 用 data-username 携带数据，由委托监听器处理（避免内联 onclick 的引号注入/XSS）
-    return `<span class="account-chip${sel}" data-username="${escapeHtml(a.username)}" title="今日已点赞 ${used}/${likeLimit}（剩余 ${available} 次）">
-      ${escapeHtml(a.username)} ${badge}
+    return `<span class="account-chip${sel}${disabled ? " disabled" : ""}" data-username="${escapeHtml(a.username)}"${disabled ? ' style="opacity:.55"' : ""} title="今日已点赞 ${used}/${likeLimit}（剩余 ${available} 次）">
+      ${escapeHtml(a.username)}${disabled ? " (已禁用)" : ""} ${badge}
     </span>`;
   }).join("");
 }
@@ -685,6 +686,11 @@ async function likeSelected() {
   }
   if (!selectedAccount) {
     toast("请先选择点赞账号", "error");
+    return;
+  }
+  const acc = allAccounts.find(a => a.username === selectedAccount);
+  if (acc && acc.enabled === false) {
+    toast(`账号 ${selectedAccount} 已被禁用`, "error");
     return;
   }
   const st = likeStats[selectedAccount];

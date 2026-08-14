@@ -233,9 +233,18 @@ async function manualCheckin() {
   const batchBtn = document.getElementById("batchCheckinBtn");
   const resultDiv = document.getElementById("checkinResult");
 
-  const accounts = [...selectedAccounts];
+  const accounts = [...selectedAccounts].filter(username => {
+    const acct = allAccounts.find(a => a.username === username);
+    if (acct && acct.enabled === false) {
+      toast(`账号 ${username} 已被禁用`, "error");
+      return false;
+    }
+    return true;
+  });
   if (accounts.length === 0) {
-    toast("请先选择要打卡的账号", "error");
+    if (selectedAccounts.size === 0) {
+      toast("请先选择要打卡的账号", "error");
+    }
     return;
   }
 
@@ -423,8 +432,12 @@ function renderAccountChips() {
   }
   container.innerHTML = allAccounts.map(a => {
     const sel = selectedAccounts.has(a.username) ? " selected" : "";
-    return `<span class="account-chip${sel}" onclick="toggleAccountSelect('${a.username}')" title="点击选择/取消">
-      ${a.username}
+    const disabled = a.enabled === false;
+    const cls = `account-chip${sel}${disabled ? " disabled" : ""}`;
+    const style = disabled ? ' style="opacity:.55"' : "";
+    const suffix = disabled ? " (已禁用)" : "";
+    return `<span class="${cls}"${style} onclick="toggleAccountSelect('${a.username}')" title="点击选择/取消">
+      ${a.username}${suffix}
     </span>`;
   }).join("");
 }

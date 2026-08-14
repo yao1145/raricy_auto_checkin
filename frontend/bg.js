@@ -1,8 +1,8 @@
-// bg.js — 低开销科幻背景：漂移星野 + 鼠标轨道粒子
+// bg.js — 低开销科幻背景：漂移星野 + 鼠标轨道粒子 + 随机流星
 // 星云旋转由 styles.css 的 CSS transform 完成（GPU 合成），
 // 本脚本仅负责 canvas 粒子，粒子数保持低位，页面隐藏时暂停渲染。
 // 鼠标靠近时，粒子绕各自独立的轨道（半径/周期/圆心偏移均不同）
-// 做圆周运动，形成"科技感"的环绕效果。
+// 做圆周运动，形成"科技感"的环绕效果；偶尔划过流星，同样遵循低开销与暂停规则。
 (function () {
   "use strict";
   const canvas = document.getElementById("space-bg");
@@ -15,14 +15,17 @@
   const COUNT = 80;            // 粒子数（刻意压低以降低开销）
   const LINK_DIST = 150;       // 鼠标连线半径（px）
   const INFLUENCE_RADIUS = 150; // 轨道影响半径（px）
+  const MAX_METEORS = 3;       // 同屏流星数量上限（压低开销）
 
   let w = 0;
   let h = 0;
   let running = true;
-  let time = 0;                // 累计运行秒数（驱动轨道相位）
+  let time = 0;                // 累计运行秒数（驱动流星生成）
+  let nextMeteor = 0;          // 下一次流星生成时刻（秒，基于 time 时钟）
   let lastTs = null;           // 上一帧 rAF 时间戳（ms）
   let mouse = { x: -9999, y: -9999 };
   const particles = [];
+  const meteors = [];          // 活跃流星
 
   function resize() {
     w = canvas.clientWidth;
@@ -33,6 +36,7 @@
   }
 
   function makeParticle() {
+    const phase = Math.random() * Math.PI * 2; // 轨道初始相位 0–2π
     return {
       x: Math.random() * w,
       y: Math.random() * h,
@@ -43,7 +47,8 @@
       ts: Math.random() * 0.02 + 0.005,    // 闪烁速度
       orbitR: Math.random() * 52 + 18,     // 轨道半径 18–70px
       period: Math.random() * 1.5 + 0.7,   // 轨道周期 0.7–2.2s
-      phase: Math.random() * Math.PI * 2,  // 轨道初始相位 0–2π
+      phase: phase,                        // 轨道初始相位（保留原字段）
+      angle: phase,                        // 累积轨道角：由 dt 推进，速度随鼠标距离变化
       offsetX: (Math.random() - 0.5) * 72, // 圆心相对鼠标的水平偏移 -36..36
       offsetY: (Math.random() - 0.5) * 72, // 圆心相对鼠标的垂直偏移 -36..36
     };
@@ -54,7 +59,7 @@
     for (let i = 0; i < COUNT; i++) particles.push(makeParticle());
   }
 
-  function step() {
+  function step(dt = 0) {
     ctx.clearRect(0, 0, w, h);
     const link2 = LINK_DIST * LINK_DIST;
     const inf2 = INFLUENCE_RADIUS * INFLUENCE_RADIUS;
@@ -73,6 +78,10 @@
       if (p.y < -5) p.y = h + 5;
       else if (p.y > h + 5) p.y = -5;
 
+      // 轨道角：无论是否受鼠标影响，都按基速推进，保证相位连续、进出影响区无突变
+      const baseRate = (Math.PI * 2) / p.period;
+      p.angle += baseRate * dt;
+
       // 鼠标影响：按邻近度把位置混合到"轨道目标"，越近越贴合、边缘平滑过渡
       const dx = mouse.x - p.x;
       const dy = mouse.y - p.y;
@@ -80,11 +89,12 @@
       if (d2 < inf2) {
         const dist = Math.sqrt(d2);
         const blend = 1 - dist / INFLUENCE_RADIUS; // 中心=1，边缘=0
-        const angle = (time / p.period + p.phase) * Math.PI * 2;
+        // 距鼠标越近，绕轨道越快：边缘 1 倍 → 中心 3.5 倍（平滑连续）
+        p.angle += baseRate * blend * 2.5 * dt;
         const ox = mouse.x + p.offsetX; // 每个粒子独立的圆心（相对鼠标偏移）
         const oy = mouse.y + p.offsetY;
-        const tx = ox + p.orbitR * Math.cos(angle);
-        const ty = oy + p.orbitR * Math.sin(angle);
+        const tx = ox + p.orbitR * Math.cos(p.angle);
+        const ty = oy + p.orbitR * Math.sin(p.angle);
         p.x += (tx - p.x) * blend;
         p.y += (ty - p.y) * blend;
       }
@@ -107,6 +117,61 @@
         ctx.stroke();
       }
     }
+
+    // 流星（shooting star）：随机生成、斜向划过、寿命短、头部亮尾渐变
+    if (dt > 0 && time >= nextMeteor && meteors.length < MAX_METEORS) {
+      meteors.push({
+        x: Math.random() * w,              // 顶部/边缘随机出现
+        y: Math.random() * h * 0.3,
+        vx: -(3 + Math.random() * 3),      // 向左 3–6 px/帧（再乘 dt*60）
+        vy: 2 + Math.random() * 2,         // 向下 2–4 px/帧
+        len: 80 + Math.random() * 60,      // 尾迹长度 80–140px
+        life: 0,
+        maxLife: 0.8 + Math.random() * 0.6 // 存活 0.8–1.4s
+      });
+      nextMeteor = time + 2 + Math.random() * 4; // 2–6 秒后下一条
+    }
+
+    for (let j = meteors.length - 1; j >= 0; j--) {
+      const m = meteors[j];
+      m.x += m.vx * dt * 60;
+      m.y += m.vy * dt * 60;
+      m.life += dt;
+
+      // 移除：寿命耗尽或飞出画布
+      if (
+        m.life >= m.maxLife ||
+        m.x < -m.len || m.x > w + m.len ||
+        m.y < -m.len || m.y > h + m.len
+      ) {
+        meteors.splice(j, 1);
+        continue;
+      }
+
+      const fade = 1 - m.life / m.maxLife; // 随寿命渐隐
+      ctx.globalAlpha = fade;
+
+      const grad = ctx.createLinearGradient(
+        m.x, m.y,
+        m.x - m.vx * m.len, m.y - m.vy * m.len
+      );
+      grad.addColorStop(0, "rgba(148, 197, 255, 0.9)"); // 头部亮
+      grad.addColorStop(1, "rgba(148, 197, 255, 0)");   // 尾部淡出
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(m.x, m.y);
+      ctx.lineTo(m.x - m.vx * m.len, m.y - m.vy * m.len);
+      ctx.stroke();
+
+      // 头部亮点
+      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 1;
+    }
   }
 
   function loop(ts) {
@@ -115,7 +180,7 @@
     const dt = Math.min((ts - lastTs) / 1000, 0.1); // 秒；封顶 0.1s 防异常跳变
     lastTs = ts;
     time += dt;
-    step();
+    step(dt);
     requestAnimationFrame(loop);
   }
 
