@@ -129,21 +129,21 @@ python run.py
 
 | 参数               | 说明                       |
 | ------------------ | -------------------------- |
-| `--port 8080`      | 指定服务端口（默认 5000）  |
-| `--host 0.0.0.0`   | 绑定地址（默认 127.0.0.1） |
-| `--debug`          | Flask 调试模式（热重载）   |
-| `--no-browser`     | 不自动打开浏览器           |
+| `--port 8080`    | 指定服务端口（默认 5000）  |
+| `--host 0.0.0.0` | 绑定地址（默认 127.0.0.1） |
+| `--debug`        | Flask 调试模式（热重载）   |
+| `--no-browser`   | 不自动打开浏览器           |
 
 ### 2.4 控制台导航
 
 浏览器打开后进入「控制中心」，顶部导航可切换到四个面板：
 
-| 面板       | 路径        | 用途                                             |
-| ---------- | ----------- | ------------------------------------------------ |
-| 控制中心   | `/`         | 今日状态总览 + 各功能入口                        |
-| 自动打卡   | `/checkin`  | 状态查看、账号选择、手动/批量打卡、日志与定时     |
-| 博客工具   | `/blog`     | 博客目录扫描、内容抓取、批量点赞                 |
-| 系统配置   | `/config`   | 账号、站点、选择器、定时、运势、API 路径集中管理 |
+| 面板     | 路径         | 用途                                             |
+| -------- | ------------ | ------------------------------------------------ |
+| 控制中心 | `/`        | 今日状态总览 + 各功能入口                        |
+| 自动打卡 | `/checkin` | 状态查看、账号选择、手动/批量打卡、日志与定时    |
+| 博客工具 | `/blog`    | 博客目录扫描、内容抓取、批量点赞                 |
+| 系统配置 | `/config`  | 账号、站点、选择器、定时、运势、API 路径集中管理 |
 
 ---
 
@@ -178,13 +178,13 @@ POST /auth/login (username + password)
 
 ### 3.4 打卡 API
 
-| 方法   | 路径                                | 说明                               |
-| ------ | ----------------------------------- | ---------------------------------- |
-| `GET`  | `/api/health`                       | 健康检查                           |
-| `GET`  | `/api/status`                       | 今日各账号打卡状态 + 下次定时时间  |
-| `POST` | `/api/checkin`                      | 手动触发打卡（异步，返回 task_id） |
-| `GET`  | `/api/checkin/progress/<task_id>`   | 轮询打卡进度                       |
-| `GET`  | `/api/logs?limit=50`                | 打卡历史记录                       |
+| 方法     | 路径                                | 说明                               |
+| -------- | ----------------------------------- | ---------------------------------- |
+| `GET`  | `/api/health`                     | 健康检查                           |
+| `GET`  | `/api/status`                     | 今日各账号打卡状态 + 下次定时时间  |
+| `POST` | `/api/checkin`                    | 手动触发打卡（异步，返回 task_id） |
+| `GET`  | `/api/checkin/progress/<task_id>` | 轮询打卡进度                       |
+| `GET`  | `/api/logs?limit=50`              | 打卡历史记录                       |
 
 **手动打卡示例：**
 
@@ -240,108 +240,65 @@ raricy.com 单账号每日最多点赞 **100** 次，系统会：
 
 ### 4.4 博客 API
 
-| 方法   | 路径                              | 说明                                          |
-| ------ | --------------------------------- | --------------------------------------------- |
-| `GET`  | `/blog`                           | 博客工具页面                                  |
-| `GET`  | `/api/blog/articles/all`          | 一次性加载全部文章（支持筛选/排序）           |
-| `GET`  | `/api/blog/articles`              | 分页文章列表                                  |
-| `GET`  | `/api/blog/meta`                  | 作者 / 分类下拉选项                           |
-| `GET`  | `/api/blog/article/<id>`          | 单篇文章详情（含正文）                        |
-| `GET`  | `/api/blog/like-stats`            | 各账号今日点赞额度统计                        |
-| `POST` | `/api/blog/scan`                  | 扫描博客目录（异步，返回 task_id）            |
-| `POST` | `/api/blog/fetch`                 | 抓取文章内容（异步，body: article_ids）       |
-| `POST` | `/api/blog/like`                  | 批量点赞（异步，body: article_ids + account） |
-| `POST` | `/api/blog/clear`                 | 清空文章与点赞记录                            |
-| `GET`  | `/api/blog/progress/<task_id>`    | 轮询博客任务进度                              |
+| 方法     | 路径                             | 说明                                          |
+| -------- | -------------------------------- | --------------------------------------------- |
+| `GET`  | `/blog`                        | 博客工具页面                                  |
+| `GET`  | `/api/blog/articles/all`       | 一次性加载全部文章（支持筛选/排序）           |
+| `GET`  | `/api/blog/articles`           | 分页文章列表                                  |
+| `GET`  | `/api/blog/meta`               | 作者 / 分类下拉选项                           |
+| `GET`  | `/api/blog/article/<id>`       | 单篇文章详情（含正文）                        |
+| `GET`  | `/api/blog/like-stats`         | 各账号今日点赞额度统计                        |
+| `POST` | `/api/blog/scan`               | 扫描博客目录（异步，返回 task_id）            |
+| `POST` | `/api/blog/fetch`              | 抓取文章内容（异步，body: article_ids）       |
+| `POST` | `/api/blog/like`               | 批量点赞（异步，body: article_ids + account） |
+| `POST` | `/api/blog/clear`              | 清空文章与点赞记录                            |
+| `GET`  | `/api/blog/progress/<task_id>` | 轮询博客任务进度                              |
 
 ---
 
 ## 五、配置管理
 
-### 5.1 配置文件分工
+所有配置均通过「系统配置」面板（`/config`）在线完成，无需手动编辑 JSON 文件。面板从上到下依次排列以下卡片，修改任意字段后点击页面底部的「保存配置」即生效。
 
-| 文件                    | 内容                                 | 是否提交到 Git |
-| ----------------------- | ------------------------------------ | -------------- |
-| `backend/config.json`   | 站点、选择器、定时、运势、API 路径   | 是             |
-| `backend/accounts.json` | 账号列表（用户名 / 密码 / 启用）     | 否（含密码）   |
+### 5.1 账号管理（置顶）
 
-账号与配置分离：`load_config()` 读取 `config.json` 后用 `accounts.json` 覆盖 `accounts` 字段；`save_config()` 反向把 `accounts` 拆出写入 `accounts.json`。API 返回密码时统一脱敏为 `****`，保存 `****` 表示保留原密码。
+- **账号列表** —— 展示全部账号，右侧「启用 / 禁用」徽章点击即可切换该账号是否参与打卡，点击「移除」删除账号。
+- **添加账号** —— 底部输入用户名与密码，点击「添加账号」加入列表。
+- 密码统一以 `****` 脱敏显示；新增账号保存真实密码，已存在的账号保持 `****` 即保留原密码不变。
 
-### 5.2 config.json 结构
+### 5.2 站点设置
 
-```json
-{
-  "site": {
-    "login_url": "https://raricy.com/auth/login",
-    "checkin_url": "https://raricy.com/checkin"
-  },
-  "selectors": {
-    "username_input": "#username",
-    "password_input": "#password",
-    "login_button": "#submitBtn",
-    "checkin_button": "#checkinBtn",
-    "success_indicator": ".fortune-modal--open",
-    "already_checked_in": ".checkin-button:disabled, button[disabled]#checkinBtn"
-  },
-  "schedule": {
-    "times": ["13:00"],
-    "timezone": "Asia/Shanghai",
-    "enabled": true
-  },
-  "fortune": {
-    "enabled": true,
-    "modal_selector": ".fortune-modal--open",
-    "card_selector": ".fortune-card",
-    "result_container_selector": "#fortuneResult",
-    "result_value_selector": "#fortuneResultValue",
-    "result_desc_selector": "#fortuneResultDesc",
-    "close_button_selector": "#fortuneCloseBtn",
-    "card_index": "random",
-    "modal_wait_timeout": 10
-  },
-  "api": {
-    "login_path": "/auth/login",
-    "checkin_path": "/checkin/api/do-checkin",
-    "fortune_path": "/checkin/api/claim-fortune",
-    "blog_listing_path": "/blog",
-    "blog_content_path": "/blog/spider/blogs",
-    "blog_like_path": "/blog"
-  }
-}
-```
+- **登录页 URL** —— raricy.com 登录页地址（默认 `https://raricy.com/auth/login`）。
+- **打卡页 URL** —— 打卡页地址（默认 `https://raricy.com/checkin`）。
 
-| 配置段      | 说明                                                              |
-| ----------- | ----------------------------------------------------------------- |
-| `site`      | 登录页与打卡页 URL                                                |
-| `selectors` | 旧版页面选择器（页面交互已改用 HTTP API，此段为兼容保留）          |
-| `schedule`  | 定时打卡时间列表、时区、启用开关                                  |
-| `fortune`   | 运势卡片：启用开关、选择器、选牌策略（`random` 或数字索引）        |
-| `api`       | 各 API 路径（登录/打卡/运势 + 博客三个路径），缺省时使用默认值     |
+### 5.3 CSS 选择器（历史兼容）
 
-> `selectors` 与 `fortune` 的大部分选择器字段为历史遗留，当前仅 `fortune.enabled` 与 `fortune.card_index` 仍被引擎读取；页面交互全部走 `api` 段的 HTTP 路径。
+页面交互已改用 HTTP API，此卡片为旧版兼容保留，字段不再被引擎读取，无特殊需求时保持默认值即可。
 
-### 5.3 accounts.json 结构
+### 5.4 定时设置
 
-```json
-[
-  { "username": "你的用户名", "password": "你的密码", "enabled": true },
-  { "username": "账号2", "password": "密码2", "enabled": false }
-]
-```
+- **启用定时打卡** —— 勾选后 APScheduler 按下方时间点每日自动打卡，取消勾选立即停用。
+- **当前定时时间** —— 已添加的时间点标签，点击标签右侧 `×` 移除。
+- **添加新时间** —— 选择时间后点击「添加」加入定时列表。
 
-- `enabled: false` 的账号被跳过，不参与打卡。
-- 首次使用若 `accounts.json` 缺失，会回退到 `config.json` 内嵌的 `accounts`（旧版兼容）。
+### 5.5 运势卡片
 
-### 5.4 配置 API
+- **启用运势卡片选择** —— 打卡后是否自动抽取运势卡片。
+- **选择器字段** —— 运势弹窗 / 卡片 / 结果相关 CSS 选择器（历史遗留，通常保持默认）。
+- **选择第几张** —— 选牌策略：随机选择，或固定第 1~5 张。
 
-| 方法   | 路径            | 说明                                        |
-| ------ | --------------- | ------------------------------------------- |
-| `GET`  | `/api/config`   | 获取当前配置（密码脱敏）                    |
-| `POST` | `/api/config`   | 更新配置（支持 `{path, value}` 路径更新或整体替换） |
-| `GET`  | `/api/accounts` | 获取账号列表（密码脱敏）                    |
-| `POST` | `/api/accounts` | 更新账号列表（写入 accounts.json）          |
+### 5.6 API 设置
 
-> 通过「系统配置」面板保存后，后端会自动 `scheduler.restart()` 使定时任务生效。
+- **登录 / 打卡 / 运势 API 路径** —— 分别对应登录、打卡、运势接口。
+- **博客列表 / 内容 / 点赞 API 路径** —— 博客工具的目录列表、正文、点赞接口（缺省时使用默认值）。
+
+### 5.7 保存配置
+
+点击页面底部「保存配置」后：
+
+- 账号写入 `backend/accounts.json`（界面显示脱敏，但保留真实密码）
+- 其余配置写入 `backend/config.json`
+- 后端自动重启调度器，使新的定时设置立即生效
 
 ---
 
@@ -361,4 +318,4 @@ Copyright (c) 2026 yaozitao
 
 ## 贡献者（Contributor）
 
-- [yaozitao](https://github.com/yao1145) —— 项目作者与主要维护者
+- [yao1145](https://github.com/yao1145) —— 项目作者与主要维护者
