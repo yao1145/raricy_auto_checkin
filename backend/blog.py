@@ -22,6 +22,9 @@ from . import store
 # 避免站点持续故障（鉴权过期/宕机/持续 5xx）时后台线程无限翻页。
 MAX_CONSECUTIVE_SCAN_ERRORS = 3
 
+# raricy.com 单个账号每日点赞上限
+DAILY_LIKE_LIMIT = 100
+
 
 class BlogEngine:
     """纯 requests 博客引擎 — 扫描目录 / 抓取内容 / 批量点赞"""
@@ -76,7 +79,7 @@ class BlogEngine:
         page = 1
         consecutive_errors = 0
         seen_pages = set()
-        _progress("scan", "正在扫描博客目录...")
+        _progress("scan", "正在扫描博客目录...", done=0)
 
         while True:
             if page in seen_pages:
@@ -157,7 +160,7 @@ class BlogEngine:
         base = self._api_url("blog_content_path", "/blog/spider/blogs")
         total = len(article_ids)
         success = failed = 0
-        _progress("fetch", f"开始抓取 {total} 篇内容...")
+        _progress("fetch", f"开始抓取 {total} 篇内容...", done=0, total_count=total)
 
         def _fetch_one(article_id):
             s = self._worker_session()
@@ -202,10 +205,11 @@ class BlogEngine:
                         retry.append(aid)  # 先不计入失败，重试后再定
                     else:
                         failed += 1
+                    # 每完成一篇即更新一次进度，进度条实时刷新
+                    _progress("fetch", f"已抓取 {success} 篇，待重试 {len(retry)}", done=success + failed, total_count=total)
             pending = retry
             if pending:
                 time.sleep(1)
-            _progress("fetch", f"已抓取 {success} 篇，待重试 {len(pending)}", done=success + failed, total_count=total)
         failed += len(pending)  # 重试满轮仍未成功的，最终计入一次失败
         _progress("done", f"抓取完成：成功 {success}，失败 {failed}", done=success + failed, total_count=total)
         return {"total": total, "success": success, "failed": failed}
@@ -220,12 +224,27 @@ class BlogEngine:
                     pass
 
         if not article_ids:
-            return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+            return {"total": 0, "success": 0, "failed": 0, "skipped": 0,
+                    "limited": 0, "used": 0, "available": 0, "limit": DAILY_LIKE_LIMIT}
+
+        # 每日点赞上限：先统计该账号今日已用次数，再据此截断待点赞列表
+        requested = len(article_ids)
+        used_before = store.count_today_likes(username)
+        available = max(0, DAILY_LIKE_LIMIT - used_before)
+        limited = max(0, requested - available)
+        if available <= 0:
+            # 今日额度已用完：不登录、不执行任何点赞请求
+            return {"total": requested, "success": 0, "failed": 0, "skipped": 0,
+                    "limited": limited, "used": used_before, "available": 0,
+                    "limit": DAILY_LIKE_LIMIT}
+        if limited > 0:
+            article_ids = article_ids[:available]
+
         self.login(username, password)
         base = self._api_url("blog_like_path", "/blog")
-        total = len(article_ids)
+        total = len(article_ids)          # 实际尝试的篇数（<= available）
         success = failed = skipped = 0
-        _progress("like", f"开始为 {total} 篇点赞...")
+        _progress("like", f"开始为 {total} 篇点赞（今日剩余 {available} 次）...", done=0, total_count=total)
 
         def _like_one(article_id):
             if store.has_liked(article_id, username):
@@ -236,8 +255,17 @@ class BlogEngine:
                 headers = {"Referer": urljoin(get_api_base(self.config), f"/blog/{article_id}")}
                 try:
                     resp = s.post(url, headers=headers, timeout=5)
-                    ok = resp.status_code == 200
-                    store.record_like(article_id, username, ok, f"HTTP {resp.status_code}")
+                    # 站点点赞接口的成败以响应 JSON 的 code 字段为准（见 raricy.com 前端
+                    # like-manager.js：`data.code === 200`），而非 HTTP 状态码。未登录时
+                    # 站点可能 302 重定向到登录页，requests 跟随重定向后 status_code 仍是 200，
+                    # 若只看状态码会把「未登录/失败」误判为点赞成功（即点赞实际未生效）。
+                    try:
+                        data = resp.json()
+                    except ValueError:
+                        data = {}
+                    ok = data.get("code") == 200
+                    message = data.get("message") or f"HTTP {resp.status_code}"
+                    store.record_like(article_id, username, ok, message)
                     return ok, article_id, resp.status_code in (500, 502, 503, 504)
                 except (requests.Timeout, requests.ConnectionError):
                     return False, article_id, True
@@ -266,10 +294,15 @@ class BlogEngine:
                         retry.append(aid)  # 先不计入失败，重试后再定
                     else:
                         failed += 1
+                    # 每完成一篇即更新一次进度，进度条实时刷新（done 计入跳过，保证进度条可达 100%）
+                    _progress("like", f"已点赞 {success} 篇，待重试 {len(retry)}", done=success + failed + skipped, total_count=total)
             pending = retry
             if pending:
                 time.sleep(1)
-            _progress("like", f"已点赞 {success} 篇，待重试 {len(pending)}", done=success + failed, total_count=total)
         failed += len(pending)  # 重试满轮仍未成功的，最终计入一次失败
-        _progress("done", f"点赞完成：成功 {success}，失败 {failed}，跳过 {skipped}", done=success + failed, total_count=total)
-        return {"total": total, "success": success, "failed": failed, "skipped": skipped}
+        _progress("done", f"点赞完成：成功 {success}，失败 {failed}，跳过 {skipped}", done=success + failed + skipped, total_count=total)
+        used_after = store.count_today_likes(username)
+        return {"total": requested, "success": success, "failed": failed, "skipped": skipped,
+                "limited": limited, "used": used_after,
+                "available": max(0, DAILY_LIKE_LIMIT - used_after),
+                "limit": DAILY_LIKE_LIMIT}

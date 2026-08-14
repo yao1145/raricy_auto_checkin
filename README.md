@@ -18,7 +18,7 @@
 - ⚙ **高度可配置** — URL、API 路径、定时规则通过 `config.json` 管理，账号通过 `accounts.json` 管理
 - 📡 **实时进度** — 打卡过程实时显示"正在登录 → 登录成功 → 正在打卡 → 打卡成功"步骤动画
 - 🖱 **一键打卡** — 桌面快捷方式一键启动系统（详见使用指南）
-- 📚 **博客工具** — 目录扫描 / 内容抓取 / 批量点赞，纯 requests + SQLite 存储
+- 📚 **博客工具** — 目录扫描 / 内容抓取 / 批量点赞，纯 requests + SQLite 存储（详见「三、博客管理」）
 
 ### 1.3 技术架构
 
@@ -54,15 +54,21 @@ raricy_auto_checkin/
 ├── backend/
 │   ├── __init__.py             # 包标记
 │   ├── checkin.py              # requests 打卡引擎（核心逻辑）+ 配置读取
+│   ├── client.py               # 共享纯 requests 登录客户端（打卡/博客复用）
+│   ├── blog.py                 # 博客引擎：目录扫描 / 内容抓取 / 批量点赞
+│   ├── store.py                # SQLite 存储层（文章 + 点赞记录）
+│   ├── progress.py             # 通用任务进度存储（内存）
 │   ├── scheduler.py            # APScheduler 定时调度器
 │   ├── app.py                  # Flask API 服务 + 进度追踪
 │   ├── config.json             # 站点/定时/运势/API 配置（不含账号）
 │   ├── accounts.json           # 账号列表（含密码，已 gitignore，不提交）
 │   └── requirements.txt        # Python 依赖
 ├── frontend/
-│   └── index.html              # Web 控制面板
-└── runtime/                    # 运行时生成（自动创建）
-    └── logs/                   # 打卡日志 JSON
+│   ├── index.html              # 打卡控制面板
+│   └── blog.html               # 博客工具面板
+└── runtime/                    # 运行时生成（自动创建，已 gitignore）
+    ├── logs/                   # 打卡日志 JSON
+    └── blog.db                 # 博客文章与点赞 SQLite 数据库
 ```
 
 ---
@@ -221,17 +227,11 @@ python run.py
 
 | 方法     | 路径                                | 说明                               |
 | -------- | ----------------------------------- | ---------------------------------- |
-| `GET`  | `/`                               | 返回 Web 控制面板                  |
+| `GET`  | `/`                               | 返回打卡控制面板                  |
 | `GET`  | `/api/health`                     | 健康检查                           |
 | `GET`  | `/api/status`                     | 今日各账号打卡状态 + 下次定时时间  |
 | `POST` | `/api/checkin`                    | 手动触发打卡（异步，返回 task_id） |
 | `GET`  | `/api/checkin/progress/<task_id>` | 轮询打卡进度                       |
-| `GET`  | `/blog`                           | 返回博客工具页面                    |
-| `POST` | `/api/blog/scan`                  | 扫描博客目录（异步，返回 task_id） |
-| `POST` | `/api/blog/fetch`                 | 抓取文章内容（异步，body: article_ids） |
-| `POST` | `/api/blog/like`                  | 批量点赞（异步，body: article_ids + account） |
-| `GET`  | `/api/blog/progress/<task_id>`    | 轮询博客任务进度                    |
-| `GET`  | `/api/blog/articles`              | 博客文章与点赞记录列表               |
 | `GET`  | `/api/logs?limit=50`              | 打卡历史记录                       |
 | `GET`  | `/api/accounts`                   | 获取所有账号列表（密码脱敏）       |
 | `POST` | `/api/accounts`                   | 更新账号列表（写入 accounts.json） |
@@ -291,6 +291,66 @@ python run.py --port 8080    # 换一个端口
 **网络异常**
 
 检查服务器是否能正常访问 raricy.com。项目默认超时 15 秒，超时会返回"网络异常"提示。
+
+---
+
+## 三、博客管理
+
+### 3.1 简介
+
+博客工具是集成在打卡系统中的一套博客辅助功能，同样基于 **纯 requests**（无浏览器依赖），用于对 raricy.com 博客区（聪明山）进行自动化操作：
+
+- 🔄 **目录扫描** — 逐页爬取博客列表，将文章（标题/作者/分类/描述/点赞数）收录到本地数据库
+- ⬇ **内容抓取** — 抓取指定文章的正文内容，保存供离线查看
+- 👍 **批量点赞** — 对选中的文章批量点赞，支持多轮重试与已赞跳过
+
+数据存储在 `runtime/blog.db`（SQLite，标准库 `sqlite3`），无需额外配置；所有操作异步执行并实时展示进度条。
+
+### 3.2 打开博客工具
+
+启动系统后，浏览器访问 `http://127.0.0.1:5000/blog`，或从打卡面板进入博客工具页。
+
+### 3.3 使用步骤
+
+1. **扫描目录** — 点击「🔄 扫描目录」，系统使用第一个启用账号登录并逐页爬取博客列表，收录文章。
+2. **筛选 / 排序** — 按作者、分类、点赞数、内容状态筛选，点击表头进行排序。
+3. **抓取内容** — 勾选文章后点击「⬇ 抓取内容」，抓取正文（已抓取的文章可点「查看」阅读）。
+4. **批量点赞** — 选择点赞账号，勾选文章后点击「👍 点赞所选」。
+5. **清空数据库** — 点击「🗑 清空数据库」删除全部文章与点赞记录。
+
+### 3.4 每日点赞额度
+
+raricy.com 单个账号每日最多点赞 **100** 次，系统会：
+
+- 在账号标签上实时显示该账号今日「已用 / 总量」（如 `12/100`），并在悬停提示中显示剩余额度
+- 当某账号可用额度归零时，自动禁用点赞按钮，无法再发起点赞
+- 点赞完成后在结果区展示本次消耗与今日剩余额度
+
+### 3.5 博客 API
+
+| 方法   | 路径                              | 说明                                   |
+| ------ | --------------------------------- | -------------------------------------- |
+| `GET`  | `/blog`                           | 博客工具页面                           |
+| `GET`  | `/api/blog/articles/all`          | 一次性加载全部文章（支持筛选/排序）    |
+| `GET`  | `/api/blog/articles`              | 分页文章列表                           |
+| `GET`  | `/api/blog/meta`                  | 作者 / 分类下拉选项                    |
+| `GET`  | `/api/blog/article/<id>`          | 单篇文章详情（含正文）                 |
+| `GET`  | `/api/blog/like-stats`            | 各账号今日点赞额度统计                 |
+| `POST` | `/api/blog/scan`                  | 扫描博客目录（异步，返回 task_id）     |
+| `POST` | `/api/blog/fetch`                 | 抓取文章内容（异步，body: article_ids）|
+| `POST` | `/api/blog/like`                  | 批量点赞（异步，body: article_ids + account） |
+| `POST` | `/api/blog/clear`                 | 清空文章与点赞记录                     |
+| `GET`  | `/api/blog/progress/<task_id>`    | 轮询博客任务进度                       |
+
+### 3.6 配置
+
+博客相关 API 路径可在 `backend/config.json` 的 `api` 段中配置（均为**可选**，缺省时使用默认值）：
+
+| 键                   | 默认值               | 说明               |
+| -------------------- | -------------------- | ------------------ |
+| `blog_listing_path`  | `/blog`              | 博客目录列表路径   |
+| `blog_content_path`  | `/blog/spider/blogs` | 文章正文接口路径   |
+| `blog_like_path`     | `/blog`              | 点赞接口基础路径   |
 
 ---
 

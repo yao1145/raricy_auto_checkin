@@ -325,6 +325,19 @@ def blog_meta():
     })
 
 
+@app.route("/api/blog/like-stats")
+def blog_like_stats():
+    """各账号今日点赞额度统计（已用/可用，每日上限由 DAILY_LIKE_LIMIT 决定）。"""
+    from .blog import DAILY_LIKE_LIMIT
+    accounts = get_enabled_accounts()
+    result = {}
+    for acc in accounts:
+        username = acc["username"]
+        used = store.count_today_likes(username)
+        result[username] = {"used": used, "available": max(0, DAILY_LIKE_LIMIT - used)}
+    return jsonify({"limit": DAILY_LIKE_LIMIT, "accounts": result})
+
+
 @app.route("/api/blog/article/<article_id>")
 def blog_article_detail(article_id):
     """单篇详情（含 content，供查看弹窗）"""

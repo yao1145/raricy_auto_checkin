@@ -127,7 +127,7 @@ SORT_COLUMNS = {
     "title": "title",
     "author": "author",
     "category": "category",
-    "likes_count": "likes_count",
+    "likes_count": "local_likes",
     "content_fetched_at": "COALESCE(content_fetched_at, created_at)",
 }
 
@@ -144,7 +144,7 @@ def query_articles(author=None, category=None, min_likes=None, status=None,
         where.append("category = ?")
         params.append(category)
     if min_likes is not None:
-        where.append("likes_count >= ?")
+        where.append("(SELECT COUNT(*) FROM likes WHERE likes.article_id = articles.id AND likes.success = 1) >= ?")
         params.append(min_likes)
     if status == "fetched":
         where.append("content_fetched_at IS NOT NULL")
@@ -173,7 +173,8 @@ def query_articles(author=None, category=None, min_likes=None, status=None,
         # 注意：故意不 SELECT content —— 列表载荷保持小体积。
         cur = conn.execute(
             f"""SELECT id, title, author, url, category, description,
-                       likes_count, content_fetched_at, created_at
+                       likes_count, content_fetched_at, created_at,
+                       (SELECT COUNT(*) FROM likes WHERE likes.article_id = articles.id AND likes.success = 1) AS local_likes
                 FROM articles{where_sql} ORDER BY {order_by} LIMIT ? OFFSET ?""",
             params + [limit, offset],
         )
@@ -225,6 +226,20 @@ def has_liked(article_id: str, account: str) -> bool:
             (article_id, account),
         )
         return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def count_today_likes(account: str) -> int:
+    """该账号今日成功点赞次数（按本地时区计日）。"""
+    conn = _conn()
+    try:
+        cur = conn.execute(
+            "SELECT COUNT(*) FROM likes WHERE account=? AND success=1 "
+            "AND date(liked_at, 'localtime') = date('now', 'localtime')",
+            (account,),
+        )
+        return cur.fetchone()[0]
     finally:
         conn.close()
 

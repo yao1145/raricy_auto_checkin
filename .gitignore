@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Runtime (logs)
+# Runtime (logs / sqlite)
 runtime/
 
 # Legacy runtime dirs
@@ -11,3 +11,8 @@ backend/logs/
 
 # Accounts (secrets, not committed)
 backend/accounts.json
+
+# Local tooling state & design docs
+.superpowers/
+.claude/
+docs/

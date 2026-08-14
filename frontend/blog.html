@@ -131,16 +131,19 @@
   .form-row > * { flex: 1; }
   .form-hint { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
 
-  /* log table */
+  /* 博客文章表格 */
   .table-wrap { overflow: auto; max-height: 60vh; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
   th, td { padding: 10px 12px; text-align: left; }
-  th { color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  th { color: var(--text-dim); font-weight: 600; font-size: 15px; text-transform: uppercase; }
+  /* 表头在 .table-wrap 内纵向滚动时固定于顶部 */
+  thead th { position: sticky; top: 0; background: var(--card-bg); z-index: 1; }
   th[data-sort] { cursor: pointer; user-select: none; }
   th[data-sort]:hover { color: var(--text); }
   th.sorting-disabled { cursor: not-allowed; opacity: 0.45; pointer-events: none; }
-  .sort-ind { font-size: 10px; color: var(--blue); margin-left: 2px; }
-  td { border-top: 1px solid var(--border); }
+  .sort-ind { font-size: 12px; color: var(--blue); margin-left: 2px; }
+  /* 列宽固定，行高按内容自适应换行 */
+  td { border-top: 1px solid var(--border); vertical-align: top; white-space: normal; overflow-wrap: break-word; }
   tr:hover td { background: rgba(255,255,255,0.02); }
   .empty-state { text-align: center; padding: 32px 0; color: var(--text-dim); font-size: 14px; }
 
@@ -260,6 +263,40 @@
   }
   .progress-step .step-label { flex: 1; }
   .progress-step .step-time { font-size: 10px; color: var(--text-dim); }
+
+  /* 前端风格进度条（深色主题） */
+  .pbar-track {
+    width: 100%;
+    height: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 10px 0 4px;
+  }
+  .pbar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--blue), var(--green));
+    border-radius: 6px;
+    transition: width 0.3s ease;
+  }
+  .pbar-indeterminate {
+    height: 100%;
+    width: 40%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--blue), var(--green));
+    animation: pbar-slide 1.2s ease-in-out infinite;
+  }
+  @keyframes pbar-slide {
+    0% { margin-left: -40%; }
+    100% { margin-left: 100%; }
+  }
+  .pbar-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+    margin-top: 2px;
+  }
 </style>
 </head>
 <body>
@@ -329,22 +366,21 @@
           </select>
         </div>
       </div>
-      <div class="btn-row" style="justify-content:flex-start;margin-top:12px;flex-wrap:wrap;gap:8px;">
-        <button class="btn btn-primary" id="loadAllBtn" onclick="loadAll()">📥 加载全部</button>
-        <button class="btn btn-danger" id="clearBtn" onclick="clearDb()" style="margin-left:auto;">🗑 清空数据库</button>
+      <div class="btn-row" style="justify-content:flex-end;margin-top:12px;flex-wrap:wrap;gap:8px;">
+        <button class="btn btn-danger" id="clearBtn" onclick="clearDb()">🗑 清空数据库</button>
       </div>
     </div>
     <div class="table-wrap">
       <table id="articlesTable">
         <thead>
           <tr>
-            <th style="width:36px;"><input type="checkbox" id="checkAll" style="width:auto;cursor:pointer;" onchange="toggleAll()" title="全选 / 取消全选"></th>
-            <th data-sort="title" onclick="setSort('title')">标题 <span class="sort-ind"></span></th>
-            <th data-sort="author" onclick="setSort('author')">作者 <span class="sort-ind"></span></th>
-            <th data-sort="category" onclick="setSort('category')">分类 <span class="sort-ind"></span></th>
-            <th data-sort="likes_count" onclick="setSort('likes_count')">👍 点赞 <span class="sort-ind"></span></th>
-            <th data-sort="content_status" onclick="setSort('content_status')">内容状态 <span class="sort-ind"></span></th>
-            <th data-sort="content_fetched_at" onclick="setSort('content_fetched_at')">更新时间 <span class="sort-ind"></span></th>
+            <th style="width:40px;"><input type="checkbox" id="checkAll" style="width:auto;cursor:pointer;" onchange="toggleAll()" title="全选 / 取消全选"></th>
+            <th data-sort="title" onclick="setSort('title')" style="width:35%;">标题 <span class="sort-ind"></span></th>
+            <th data-sort="author" onclick="setSort('author')" style="width:12%;">作者 <span class="sort-ind"></span></th>
+            <th data-sort="category" onclick="setSort('category')" style="width:13%;">分类 <span class="sort-ind"></span></th>
+            <th data-sort="likes_count" onclick="setSort('likes_count')" style="width:8%;">点赞 <span class="sort-ind"></span></th>
+            <th data-sort="content_status" onclick="setSort('content_status')" style="width:15%;">内容状态 <span class="sort-ind"></span></th>
+            <th data-sort="content_fetched_at" onclick="setSort('content_fetched_at')" style="width:17%;">更新时间 <span class="sort-ind"></span></th>
           </tr>
         </thead>
         <tbody id="articlesBody">
@@ -352,6 +388,7 @@
         </tbody>
       </table>
     </div>
+    <div id="pagination" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:14px;"></div>
   </div>
 
   <!-- 查看内容弹窗 -->
@@ -419,6 +456,8 @@ function escapeHtml(str) {
 // ── 点赞账号选择 ─────────────────────────────────────────
 let allAccounts = [];        // 所有账号列表
 let selectedAccount = "";    // 用于点赞的账号（单选，默认第一个启用账号）
+let likeStats = {};   // { username: {used, available} }
+let likeLimit = 100;  // 每日点赞上限（由 /api/blog/like-stats 返回）
 
 async function loadAccounts() {
   try {
@@ -434,6 +473,18 @@ async function loadAccounts() {
   renderAccountChips();
 }
 
+async function loadLikeStats() {
+  try {
+    const data = await API.get("/api/blog/like-stats");
+    likeLimit = data.limit || 100;
+    likeStats = data.accounts || {};
+  } catch (e) {
+    likeStats = {};
+  }
+  renderAccountChips();
+  updateActionButtons();
+}
+
 function renderAccountChips() {
   const container = document.getElementById("accountChips");
   if (allAccounts.length === 0) {
@@ -442,9 +493,15 @@ function renderAccountChips() {
   }
   container.innerHTML = allAccounts.map(a => {
     const sel = a.username === selectedAccount ? " selected" : "";
+    const st = likeStats[a.username] || {};
+    const used = st.used || 0;
+    const available = (st.available != null) ? st.available : likeLimit;
+    const badge = available <= 0
+      ? `<span style="color:var(--red);">${used}/${likeLimit}</span>`
+      : `<span style="color:var(--text-dim);">${used}/${likeLimit}</span>`;
     // 用 data-username 携带数据，由委托监听器处理（避免内联 onclick 的引号注入/XSS）
-    return `<span class="account-chip${sel}" data-username="${escapeHtml(a.username)}" title="点击选择点赞账号">
-      ${escapeHtml(a.username)}
+    return `<span class="account-chip${sel}" data-username="${escapeHtml(a.username)}" title="今日已点赞 ${used}/${likeLimit}（剩余 ${available} 次）">
+      ${escapeHtml(a.username)} ${badge}
     </span>`;
   }).join("");
 }
@@ -461,59 +518,47 @@ let _viewBtnListenerAttached = false;  // 「查看」委托监听器只挂载�
 // ── 筛选 / 排序 / 分页状态 ───────────────────────────────
 let filters = { author: "", category: "", minLikes: null, status: "" };
 let sortState = { key: null, dir: "asc" };
-let currentPage = 1;
-let hasMore = false;
-let loadingMore = false;
-let pendingReset = false;
+let articles = [];       // 一次加载全部文章，客户端分页
+let likes = [];          // 全部点赞记录
 let totalArticles = 0;
-let articles = [];
-let likes = [];
+let currentPage = 1;     // 当前页码（1 起）
+const PAGE_SIZE = 50;    // 每页条数
+let loading = false;     // 正在加载全部文章
 
-function buildQuery(page = currentPage) {
+function buildQuery() {
   const p = new URLSearchParams();
   if (filters.author) p.set("author", filters.author);
   if (filters.category) p.set("category", filters.category);
   if (filters.minLikes != null && filters.minLikes !== "") p.set("min_likes", filters.minLikes);
   if (filters.status) p.set("status", filters.status);
   if (sortState.key) { p.set("sort", sortState.key); p.set("order", sortState.dir); }
-  p.set("page", page);
-  p.set("page_size", 50);
   return p.toString();
 }
 
-async function loadArticles(reset = true, nextPage = null) {
-  if (loadingMore) {
-    // 重置请求在滚动加载进行中到达时，不能静默丢弃——挂起，待本轮结束后重发
-    if (reset) pendingReset = true;
-    return;
-  }
-  loadingMore = true;
-  if (reset) { currentPage = 1; articles = []; }
+async function loadArticles() {
+  if (loading) return;
+  loading = true;
   try {
-    const data = await API.get(`/api/blog/articles?${buildQuery(nextPage || currentPage)}`);
-    if (reset) { articles = data.articles; likes = data.likes; }
-    else { articles = articles.concat(data.articles); likes = likes.concat(data.likes); }
+    const data = await API.get(`/api/blog/articles/all?${buildQuery()}`);
+    articles = data.articles;
+    likes = data.likes;
     totalArticles = data.total;
-    hasMore = data.has_more;
-    currentPage = data.page;   // 仅从响应回填，失败时 currentPage 保持不变
+    selectedIds.clear();  // 行集合整体替换，旧勾选失效
+    currentPage = 1;      // 回到第一页
     renderArticlesTable();
   } catch (e) {
     toast("加载文章失败: " + e.message, "error");
-    if (reset) {
-      totalArticles = 0;
-      hasMore = false;
-      document.getElementById("articleCount").textContent = "共 0 篇";
-      document.getElementById("articlesBody").innerHTML =
-        `<tr><td colspan="7" class="empty-state" style="color:var(--red);">加载失败: ${escapeHtml(e.message)}</td></tr>`;
-      updateActionButtons();
-      updateSortIndicators();
-    }
+    articles = [];
+    likes = [];
+    totalArticles = 0;
+    document.getElementById("articleCount").textContent = "共 0 篇";
+    document.getElementById("articlesBody").innerHTML =
+      `<tr><td colspan="7" class="empty-state" style="color:var(--red);">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+    renderPagination();
+    updateActionButtons();
+    updateSortIndicators();
   } finally {
-    loadingMore = false;
-    if (pendingReset) {
-      pendingReset = false;
-      loadArticles(true);
-    }
+    loading = false;
   }
 }
 
@@ -524,12 +569,11 @@ function applyFilters() {
     minLikes: document.getElementById("filterMinLikes").value,
     status: document.getElementById("filterStatus").value,
   };
-  loadedAll = false;  // 筛选触发全新分页加载，退出「加载全部」视图
-  loadArticles(true);
+  loadArticles();
 }
 
 function setSort(key) {
-  if (loadingAll) return;  // 加载全部期间忽略排序点击（CSS 也已禁用指针事件）
+  if (loading) return;  // 加载期间忽略排序点击
   if (sortState.key === key) {
     sortState.dir = sortState.dir === "asc" ? "desc" : sortState.dir === "desc" ? null : "asc";
     if (sortState.dir === null) sortState.key = null;
@@ -538,8 +582,7 @@ function setSort(key) {
     sortState.dir = "asc";
   }
   updateSortIndicators();
-  loadedAll = false;  // 排序触发全新分页加载，退出「加载全部」视图
-  loadArticles(true);
+  loadArticles();
 }
 
 function updateSortIndicators() {
@@ -574,10 +617,18 @@ function renderArticlesTable() {
 
   if (articles.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无文章，请先扫描目录</td></tr>';
+    renderPagination();
     updateActionButtons();
     updateSortIndicators();
     return;
   }
+
+  // 客户端分页：一次加载全部后，按每页 50 条切片显示
+  const totalPages = Math.max(1, Math.ceil(articles.length / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageArticles = articles.slice(start, start + PAGE_SIZE);
 
   // 按文章分组本地点赞记录
   const likesByArticle = {};
@@ -586,7 +637,7 @@ function renderArticlesTable() {
     likesByArticle[l.article_id].push(l);
   });
 
-  tbody.innerHTML = articles.map(a => {
+  tbody.innerHTML = pageArticles.map(a => {
     const id = a.id;
     // list 接口不再返回 content（精简 payload），状态仅以抓取时间戳为准
     const contentFetched = !!a.content_fetched_at;
@@ -604,15 +655,15 @@ function renderArticlesTable() {
     const likeHistory = likesByArticle[id] || [];
     const successLikes = likeHistory.filter(l => l.success).length;
     const likeCell = successLikes > 0
-      ? `<span title="${escapeHtml(likeHistory.map(l => `${l.success ? "✅" : "❌"} ${l.account} ${l.liked_at || ""}`).join("\n"))}" style="cursor:help;">👍 ${successLikes}</span>`
-      : "—";
+      ? `<span title="${escapeHtml(likeHistory.map(l => `${l.success ? "✅" : "❌"} ${l.account} ${l.liked_at || ""}`).join("\n"))}" style="cursor:help;">${successLikes}</span>`
+      : "0";
 
     const updated = a.content_fetched_at || a.created_at || "";
     const checked = selectedIds.has(id) ? " checked" : "";
 
     return `<tr>
-      <td><input type="checkbox" class="row-check" style="width:auto;cursor:pointer;" value="${escapeHtml(id)}"${checked} onchange="syncSelection()"></td>
-      <td style="max-width:280px;"><a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" title="${escapeHtml(a.title)}" style="color:var(--text);text-decoration:none;"><b>${escapeHtml(a.title || "-")}</b></a></td>
+      <td><input type="checkbox" class="row-check" style="width:auto;cursor:pointer;" value="${escapeHtml(id)}"${checked} onchange="toggleRow(this)"></td>
+      <td><a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" title="${escapeHtml(a.title)}" style="color:var(--text);text-decoration:none;"><b>${escapeHtml(a.title || "-")}</b></a></td>
       <td>${escapeHtml(a.author || "-")}</td>
       <td>${a.category ? `<span class="badge badge-blue">${escapeHtml(a.category)}</span>` : "-"}</td>
       <td>${likeCell}</td>
@@ -621,6 +672,7 @@ function renderArticlesTable() {
     </tr>`;
   }).join("");
 
+  renderPagination();
   updateActionButtons();
   updateSortIndicators();
 
@@ -637,17 +689,44 @@ function renderArticlesTable() {
   }
 }
 
+// ── 分页控件 ─────────────────────────────────────────────
+function renderPagination() {
+  const el = document.getElementById("pagination");
+  if (!el) return;
+  const totalPages = Math.max(1, Math.ceil(articles.length / PAGE_SIZE));
+  if (totalPages <= 1) {
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="goPage(${currentPage - 1})" ${currentPage <= 1 ? "disabled" : ""}>◀ 上一页</button>
+    <span style="font-size:12px;color:var(--text-dim);">第 ${currentPage} / ${totalPages} 页（共 ${articles.length} 篇）</span>
+    <button class="btn btn-ghost btn-sm" onclick="goPage(${currentPage + 1})" ${currentPage >= totalPages ? "disabled" : ""}>下一页 ▶</button>
+  `;
+}
+
+function goPage(page) {
+  const totalPages = Math.max(1, Math.ceil(articles.length / PAGE_SIZE));
+  if (page < 1 || page > totalPages) return;
+  currentPage = page;
+  renderArticlesTable();
+}
+
 // ── 勾选状态 ──────────────────────────────────────────────
-function syncSelection() {
-  selectedIds.clear();
-  document.querySelectorAll(".row-check:checked").forEach(c => selectedIds.add(c.value));
+function toggleRow(cb) {
+  if (cb.checked) selectedIds.add(cb.value);
+  else selectedIds.delete(cb.value);
   updateActionButtons();
 }
 
 function toggleAll() {
   const all = document.getElementById("checkAll").checked;
-  document.querySelectorAll(".row-check").forEach(c => c.checked = all);
-  syncSelection();
+  if (all) {
+    articles.forEach(a => selectedIds.add(a.id));  // 全选（含未显示在当页的文章）
+  } else {
+    selectedIds.clear();
+  }
+  renderArticlesTable();  // 重绘当前页以同步复选框
 }
 
 function getSelectedIds() {
@@ -686,52 +765,28 @@ document.getElementById("accountChips").addEventListener("click", function(e) {
   selectAccount(chip.getAttribute("data-username"));
 });
 
-// ── 无限滚动 ─────────────────────────────────────────────
-document.querySelector(".table-wrap").addEventListener("scroll", function() {
-  if (loadingAll || loadingMore || !hasMore) return;
-  if (this.scrollTop + this.clientHeight >= this.scrollHeight - 80) {
-    loadArticles(false, currentPage + 1);
-  }
-});
-
 // ── 操作按钮状态 ─────────────────────────────────────────
 let _running = false;
-let loadingAll = false;   // 「加载全部」进行中：禁用操作/筛选/排序并抑制滚动
-let loadedAll = false;    // 当前视图为「加载全部」：30s 自动刷新保持该视图原地刷新
 const BTN_LABELS = { scan: "🔄 扫描目录", fetch: "⬇ 抓取内容", like: "👍 点赞所选" };
 
 function updateActionButtons() {
-  const busy = _running || loadingAll;
+  const busy = _running || loading;
   const count = selectedIds.size;
+  const sel = likeStats[selectedAccount];
+  const noQuota = !!(sel && sel.available <= 0);
   document.getElementById("scanBtn").disabled = busy;
   document.getElementById("fetchBtn").disabled = busy || count === 0;
-  document.getElementById("likeBtn").disabled = busy || count === 0;
+  document.getElementById("likeBtn").disabled = busy || count === 0 || noQuota;
 
   const all = document.getElementById("checkAll");
   if (all) {
-    const boxes = document.querySelectorAll(".row-check");
-    all.checked = boxes.length > 0 && count === boxes.length;
-    all.indeterminate = count > 0 && count < boxes.length;
+    const total = articles.length;
+    all.checked = total > 0 && count === total;
+    all.indeterminate = count > 0 && count < total;
   }
 
   const countEl = document.getElementById("selectedCount");
   if (countEl) countEl.textContent = count > 0 ? `已选 ${count} 篇` : "";
-}
-
-// 「加载全部」期间禁用操作按钮 + 筛选输入 + 排序表头；恢复时按选择重新计算按钮态
-function setControlsDisabled(disabled) {
-  ["scanBtn", "fetchBtn", "likeBtn"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = disabled;
-  });
-  ["filterAuthor", "filterCategory", "filterMinLikes", "filterStatus"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = disabled;
-  });
-  document.querySelectorAll("th[data-sort]").forEach(th => {
-    th.classList.toggle("sorting-disabled", disabled);
-  });
-  if (!disabled) updateActionButtons();
 }
 
 // ── 任务进度 ─────────────────────────────────────────────
@@ -801,23 +856,19 @@ function renderProgressSteps(steps) {
   return html;
 }
 
-// tqdm 风格进度条：done=已处理数，total=总数（扫描未知总数时显示不确定性动画条）
+// 前端风格进度条：done=已处理数，total=总数（扫描未知总数时显示滑动不确定条）
 function renderProgressBar(done, total) {
-  const width = 30; // 字符宽度，tqdm 风格
   if (done == null) return "";
-  let pct = "", barStr;
+  let fill = "", label = "";
   if (total) {
-    const p = Math.min(1, done / total);
-    const filled = Math.round(p * width);
-    barStr = "█".repeat(filled) + "░".repeat(width - filled);
-    pct = ` ${(p * 100).toFixed(0)}%`;
+    const pct = Math.min(100, Math.round((done / total) * 100));
+    fill = `<div class="pbar-fill" style="width:${pct}%;"></div>`;
+    label = `${done} / ${total} · ${pct}%`;
   } else {
-    // 未知总数（扫描）：不确定性进度条
-    const frame = (Math.floor(Date.now() / 400) % (width - 4));
-    barStr = "░".repeat(frame) + "██" + "░".repeat(width - frame - 2);
-    pct = ` ${done} 篇`;
+    fill = `<div class="pbar-indeterminate"></div>`;
+    label = `已处理 ${done} 篇`;
   }
-  return `<div style="font-family:monospace;font-size:12px;margin:8px 0;white-space:pre;">[${barStr}]${pct}</div>`;
+  return `<div class="pbar-track">${fill}</div><div class="pbar-label">${label}</div>`;
 }
 
 function pollProgress(which, task_id, onDone) {
@@ -873,7 +924,11 @@ function renderSummary(results) {
   }
   if ("success" in results) {
     const skip = results.skipped ? `，跳过 <b>${results.skipped}</b>` : "";
-    return `<div style="margin:3px 0;">✅ 成功 <b style="color:var(--green);">${results.success}</b> / 共 ${results.total} 篇，失败 <b style="color:var(--red);">${results.failed}</b>${skip}</div>`;
+    const limited = results.limited ? `，超出额度 <b>${results.limited}</b>` : "";
+    const avail = (results.available != null)
+      ? `，今日剩余 <b style="color:var(--blue);">${results.available}</b>/${results.limit || 100}`
+      : "";
+    return `<div style="margin:3px 0;">✅ 成功 <b style="color:var(--green);">${results.success}</b> / 共 ${results.total} 篇，失败 <b style="color:var(--red);">${results.failed}</b>${skip}${limited}${avail}</div>`;
   }
   if ("new" in results) {
     return `<div style="margin:3px 0;">🆕 新增 <b style="color:var(--green);">${results.new}</b> 篇，共 <b>${results.total}</b> 篇，错误 <b style="color:var(--red);">${results.errors}</b></div>`;
@@ -948,6 +1003,11 @@ async function likeSelected() {
     toast("请先选择点赞账号", "error");
     return;
   }
+  const st = likeStats[selectedAccount];
+  if (st && st.available <= 0) {
+    toast(`${selectedAccount} 今日点赞次数已用完（${st.used}/${likeLimit}）`, "error");
+    return;
+  }
   _startTask("like");
   try {
     const { task_id } = await API.post("/api/blog/like", {
@@ -961,6 +1021,7 @@ async function likeSelected() {
         toast("点赞失败: " + results.error, "error");
       } else {
         toast(`点赞完成: 成功 ${results.success} / 失败 ${results.failed}`);
+        loadLikeStats();
         loadArticles();
       }
     });
@@ -971,42 +1032,16 @@ async function likeSelected() {
   }
 }
 
-// ── 动作：加载全部 ───────────────────────────────────────
-async function loadAll() {
-  if (loadingAll || _running) return;
-  loadingAll = true;
-  setControlsDisabled(true);   // 禁用 scan/fetch/like + 筛选/排序输入 + 抑制滚动
-  const btn = document.getElementById("loadAllBtn");
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 加载中...';
-  try {
-    const q = buildQuery();  // buildQuery 已含筛选+排序（/all 忽略 page/page_size）
-    const data = await API.get(`/api/blog/articles/all?${q}`);
-    articles = data.articles; likes = data.likes; totalArticles = data.total;
-    hasMore = false;  // 加载全部后不再无限滚动
-    selectedIds.clear();  // 旧勾选指向的 id 已不在表中，避免残留勾选
-    loadedAll = true;  // 当前视图为「加载全部」，自动刷新时保持原地刷新
-    renderArticlesTable();
-    toast(`已加载全部 ${totalArticles} 篇`);
-  } catch (e) {
-    toast("加载全部失败: " + e.message, "error");
-  } finally {
-    loadingAll = false;
-    setControlsDisabled(false);
-    btn.disabled = false;
-    btn.innerHTML = "📥 加载全部";
-  }
-}
-
 // ── 动作：清空数据库 ─────────────────────────────────────
 async function clearDb() {
-  if (_running || loadingAll) { toast("请先等待当前任务完成", "error"); return; }
+  if (_running || loading) { toast("请先等待当前任务完成", "error"); return; }
   if (!confirm("确定清空所有文章与点赞记录？此操作不可恢复。")) return;
   try {
     await API.post("/api/blog/clear", {});
     toast("数据库已清空");
-    articles = []; likes = []; totalArticles = 0; hasMore = false;
+    articles = []; likes = []; totalArticles = 0;
     selectedIds.clear();  // 清空后不再有可操作的行
+    currentPage = 1;
     renderArticlesTable();
   } catch (e) {
     toast("清空失败: " + e.message, "error");
@@ -1016,17 +1051,14 @@ async function clearDb() {
 // ── 初始化 ───────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
   loadAccounts();
+  loadLikeStats();
   loadMeta();
   loadArticles();
-  // 每 30 秒自动刷新文章列表（任务进行中跳过，避免覆盖进度）
+  // 每 10 分钟自动刷新文章列表（任务进行中跳过，避免覆盖进度）
   setInterval(() => {
-    if (_running || loadingAll) return;
-    if (loadedAll) {
-      loadAll();      // 保持「加载全部」视图，原地刷新全部
-    } else {
-      loadArticles(); // 普通分页视图，刷新当前页
-    }
-  }, 30000);
+    if (_running || loading) return;
+    loadArticles();
+  }, 600000);
 });
 </script>
 </body>

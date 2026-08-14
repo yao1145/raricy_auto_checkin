@@ -12,11 +12,9 @@
     "already_checked_in": ".checkin-button:disabled, button[disabled]#checkinBtn"
   },
   "schedule": {
-    "times": [
-      "13:00"
-    ],
+    "times": [],
     "timezone": "Asia/Shanghai",
-    "enabled": true
+    "enabled": false
   },
   "fortune": {
     "enabled": true,
