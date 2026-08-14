@@ -25,6 +25,10 @@ MAX_CONSECUTIVE_SCAN_ERRORS = 3
 # raricy.com 单个账号每日点赞上限
 DAILY_LIKE_LIMIT = 100
 
+# 单篇点赞的最大尝试次数：点赞接口既可点赞也可取消点赞，code=200 且 liked=false
+# 时表示本次实际是「取消点赞」，需重发；连续失败 MAX_LIKE_ATTEMPTS 次后放弃。
+MAX_LIKE_ATTEMPTS = 3
+
 
 class BlogEngine:
     """纯 requests 博客引擎 — 扫描目录 / 抓取内容 / 批量点赞"""
@@ -253,27 +257,42 @@ class BlogEngine:
             try:
                 url = f"{base}/{article_id}/like"
                 headers = {"Referer": urljoin(get_api_base(self.config), f"/blog/{article_id}")}
-                try:
-                    resp = s.post(url, headers=headers, timeout=5)
-                    # 站点点赞接口的成败以响应 JSON 的 code 字段为准（见 raricy.com 前端
-                    # like-manager.js：`data.code === 200`），而非 HTTP 状态码。未登录时
-                    # 站点可能 302 重定向到登录页，requests 跟随重定向后 status_code 仍是 200，
-                    # 若只看状态码会把「未登录/失败」误判为点赞成功（即点赞实际未生效）。
+                # 点赞接口既可点赞也可取消点赞，只有响应 JSON 里 liked=true 才算真正点上了。
+                # code=200 且 liked=false 表示本次请求实际是「取消点赞」，需重发，单篇最多
+                # 尝试 MAX_LIKE_ATTEMPTS 次。注意未登录时站点可能 302 重定向到登录页，requests
+                # 跟随重定向后 status_code 仍是 200，故不能只看 code 或 HTTP 状态码。
+                for attempt in range(MAX_LIKE_ATTEMPTS):
                     try:
-                        data = resp.json()
-                    except ValueError:
-                        data = {}
-                    ok = data.get("code") == 200
+                        resp = s.post(url, headers=headers, timeout=5)
+                        try:
+                            data = resp.json()
+                        except ValueError:
+                            data = {}
+                    except (requests.Timeout, requests.ConnectionError):
+                        return False, article_id, True
+                    except requests.RequestException:
+                        return False, article_id, False
+                    except sqlite3.Error:
+                        # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
+                        return False, article_id, False
+
+                    # 成功：以 liked=true 判定，而非 code=200。
+                    if data.get("liked") is True:
+                        store.record_like(article_id, username, True, data.get("message") or "操作成功")
+                        return True, article_id, False
+
+                    # 取消点赞（code=200 且 liked=false）：重发，最多 MAX_LIKE_ATTEMPTS 次
+                    if data.get("code") == 200 and data.get("liked") is False:
+                        if attempt < MAX_LIKE_ATTEMPTS - 1:
+                            time.sleep(0.5)
+                            continue
+                        store.record_like(article_id, username, False, data.get("message") or "未点赞（liked=false）")
+                        return False, article_id, False
+
+                    # 其余情况（4xx / code 非 200 / liked 缺省等）：非重试失败；5xx 走外层重试轮
                     message = data.get("message") or f"HTTP {resp.status_code}"
-                    store.record_like(article_id, username, ok, message)
-                    return ok, article_id, resp.status_code in (500, 502, 503, 504)
-                except (requests.Timeout, requests.ConnectionError):
-                    return False, article_id, True
-                except requests.RequestException:
-                    return False, article_id, False
-                except sqlite3.Error:
-                    # SQLite 写失败（如 database is locked）只降级单篇，不中断整批
-                    return False, article_id, False
+                    store.record_like(article_id, username, False, message)
+                    return False, article_id, resp.status_code in (500, 502, 503, 504)
             finally:
                 s.close()
 
