@@ -1,14 +1,20 @@
-# 无 Mac 安装到 iPhone（Option B）
+# 无 Mac 安装到 iPhone（已验证路径）
 
 Swift 源码必须编译成 `.ipa` 才能安装，而编译需要 Xcode（macOS）。**无需自备 Mac**——
-用 GitHub Actions 的云端 macOS 跑编译，再用 AltStore（AltServer 有 Windows 版）装到手机。
+用 GitHub Actions 的云端 macOS 跑编译，再用 **iLoader（Windows）的「Import IPA」** 直接
+签名并安装到手机。
+
+> ⚠️ 已踩过的坑（iPhone 17 / iOS 26，免费 Apple ID）：
+> - **AltServer / AltStore**：2FA 登录报 `Server returned invalid response`，app-specific password 已失效 → **不可用**。
+> - **SideStore**：配对文件反复报 `could not determine UDID` / `pairing file invalid` / `InvalidPairing(.rppairing UDID invalid)` → **不可用**。
+> - ✅ **iLoader → Import IPA**：绕过所有配对/UDID/2FA 环节，直接签名安装，**可用**。
 
 ## 总体流程
 
 ```
 推送仓库 → GitHub Actions 云端构建 → 下载未签名 .ipa
-        → 电脑装 AltServer(Windows) → 手机装 AltStore
-        → AltStore 用免费 Apple ID 重签名并安装 .ipa
+        → Windows 装 iLoader → Import IPA → 签名并安装到手机
+        → 每 7 天重新 Import 一次（免费 Apple ID 的硬限制）
 ```
 
 ## 一、云端构建（已配置好，推送即触发）
@@ -26,33 +32,46 @@ Swift 源码必须编译成 `.ipa` 才能安装，而编译需要 Xcode（macOS�
 
 > 若未来 GitHub 移除 `macos-15` runner，把 workflow 里的 `runs-on: macos-15` 改成 `macos-latest` 即可。
 
-## 二、在 Windows 上安装 AltStore
+## 二、Windows 前置依赖
 
-1. 安装 **iTunes** 和 **iCloud** —— 务必从苹果官网下载「Windows 版」，**不要**用 Microsoft Store 版本（AltServer 依赖其 USB 驱动）。
-2. 到 altstore.io 下载 **AltServer for Windows** 并安装。
-3. 用 USB-C 线连接 iPhone，解锁手机并点「信任」。
-4. 在系统托盘点 AltServer 图标 → **Install AltStore → 你的 iPhone** → 输入你的 Apple ID 与密码。
-5. 手机上出现 **AltStore** 图标；首次打开会提示「未受信任的开发者」，到
-   **设置 → 通用 → VPN 与设备管理 → 你的 Apple ID → 信任**。
+iLoader 需要苹果的 USB 驱动（与 AltServer 相同）：
 
-## 三、用 AltStore 安装打卡 App
+1. 安装 **iTunes** —— 从苹果官网下载「Windows 版」独立安装包（`.exe`），**不要**用 Microsoft Store 版。
+   官网默认是「Get it from Microsoft」，要选页面下方的「找其他版本 → Windows」拿到独立 `.exe`；
+   或直接访问 `https://www.apple.com/itunes/download/win64`。
+2. 安装 **iCloud** —— 同理，用独立 `iCloudSetup.exe`（Store 版被沙箱隔离，工具拿不到驱动）。
+3. 从 Microsoft Store 安装 **Apple Devices**（iOS 26 下设备管理已从 iTunes 独立出来）。
+4. 安装后**重启电脑**。
 
-1. 把 `RaricyCheckin.ipa` 传到手机（AirDrop、iCloud 云盘、邮件、微信均可）。
-2. 手机打开 **AltStore** → **My Apps** 右上角 **+** → 选中该 `.ipa`。
-3. AltStore 用你的免费 Apple ID 重签名并安装。
-4. 首次打开同样需要到 **设置 → 通用 → VPN 与设备管理** 信任该应用。
+## 三、用 iLoader 安装
 
-## 四、7 天重签（免费 Apple ID 的限制）
+1. 从 `github.com/nab138/iloader` Releases 下载 **iLoader for Windows**，解压运行。
+2. USB-C 连接 iPhone，解锁并点「信任」。
+3. iLoader 里点 **Import IPA**，选择下载好的 `RaricyCheckin.ipa`。
+4. 按提示登录你的 Apple ID（这里走的是 iLoader 自己的登录，可正常处理 2FA 验证码）。
+5. iLoader 签名并安装到手机。
 
-免费账号签名的应用 **7 天后失效**。AltStore 会在手机与电脑同一 Wi-Fi、且 AltServer
-运行时自动续签，基本无需手动操作。若失效，重开 AltStore → My Apps → 点应用 → Refresh All。
+> iLoader 也有「安装 SideStore / LiveContainer」的按钮，但本机实测配对文件无法通过验证；
+> **直接 Import IPA 是唯一稳定路径**，无需 SideStore。
 
-## 五、iPhone 首次使用前的准备
+## 四、信任并首次使用
 
-- **开启开发者模式**：`设置 → 隐私与安全性 → 开发者模式` → 开启并重启。
-- 应用内置账号与密码（Keychain 存储），打开 App →「添加」账号 →「立即打卡」。
+1. 手机 `设置 → 通用 → VPN 与设备管理 → 你的 Apple ID → 信任`。
+2. `设置 → 隐私与安全性 → 开发者模式` → 开启并重启（若 App 无法启动）。
+3. 打开 App →「添加」账号 → 输入 raricy.com 用户名密码 →「立即打卡」。
+
+## 五、7 天续期（免费 Apple ID 的硬限制）
+
+免费账号签名的应用 **7 天后失效**。当前设备上 **没有可用的自动续期工具**（AltServer / SideStore 均不可用），
+因此续期方式就是**手动重装**：
+
+- 到期后：打开 iLoader → **Import IPA** → 重新选 `RaricyCheckin.ipa` → 重装（约 1 分钟，需 USB 连电脑）。
+
+> LiveContainer 也不能自动续期——它只是「一个签名跑多个 app」的容器，其自身的免费签名同样 7 天过期。
+> 想彻底摆脱 7 天限制，只能付费证书（Signulous / AppDB 等，约 $20/年，一年有效、无需重签、无配对文件）。
 
 ## 备注
 
 - 应用最低支持 **iOS 17**，iPhone 17（iOS 26）可直接运行；仅构建侧需要 Xcode ≥ 15（云端已满足）。
 - 端点硬编码在 `ios/RaricyCheckin/Config/AppConfig.swift`，无需配置。
+- 该设备无法降级 iOS（iPhone 17 硬件最低即 26.0），也无法使用 TrollStore（需 iOS ≤ 17.0）。
