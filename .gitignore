@@ -17,3 +17,7 @@ backend/accounts.json
 .claude/
 docs/
 raricy/
+
+# iOS generated (produced by xcodegen + xcodebuild, not committed)
+ios/build/
+ios/RaricyCheckin.xcodeproj/
