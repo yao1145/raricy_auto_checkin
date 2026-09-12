@@ -12,8 +12,8 @@ from pathlib import Path
 import requests
 
 from .client import (
-    build_session, login as client_login, get_api_base,
-    CheckinError, AlreadyCheckedInError, LoginFailedError, NetworkError,
+    build_session, login as client_login, api_url,
+    CheckinError, AlreadyCheckedInError, LoginFailedError, NetworkError, RateLimitedError,
 )
 
 # ── 项目路径 ──────────────────────────────────────────────
@@ -58,10 +58,6 @@ class CheckinEngine:
 
     # ── Session 管理 ────────────────────────────────────
 
-    def _get_api_base(self) -> str:
-        """从 checkin_url 提取 API 基础 URL（scheme + netloc）"""
-        return get_api_base(self.config)
-
     def _build_session(self) -> requests.Session:
         """创建带浏览器伪装头的 requests.Session"""
         return build_session(self.config)
@@ -83,12 +79,12 @@ class CheckinEngine:
 
     def _login(self, username: str, password: str) -> requests.Session:
         """
-        POST 登录到 /auth/login，返回已认证的 session。
+        POST 登录到 /api/auth/login，返回已认证的 session。
 
         策略（实现见 client.login）:
-        1. GET 登录页 → 提取可能的 CSRF token
-        2. POST 表单数据 (username, password)
-        3. 验证登录成功（检查响应 / 重定向）
+        1. POST JSON {username, password}
+        2. 按响应 code 判定（401 密码错 / 429 限频）
+        3. GET 打卡接口复核会话真的生效
         """
         return client_login(self.config, username, password)
 
@@ -97,14 +93,14 @@ class CheckinEngine:
     def _api_checkin(self, session: requests.Session) -> dict:
         """
         通过 HTTP API 执行打卡。
-        POST /checkin/api/do-checkin
-        """
-        api_base = self._get_api_base()
-        api_cfg = self.config.get("api", {})
-        checkin_path = api_cfg.get("checkin_path", "/checkin/api/do-checkin")
-        url = f"{api_base}{checkin_path}"
+        POST /api/checkin —— 不接收 body，签到与运势抽卡是分开的两步
+        （第二步见 _api_claim_fortune）。
 
-        resp = session.post(url, json={}, timeout=15)
+        响应码：200 签到成功 / 400 今天已签到（body 带 already_checked）/ 401 未登录。
+        """
+        url = api_url(self.config, "checkin_path", "/api/checkin")
+
+        resp = session.post(url, timeout=15)
         try:
             data = resp.json()
         except ValueError:
@@ -115,12 +111,9 @@ class CheckinEngine:
                            chosen_index: int | None = None) -> dict | None:
         """
         通过 HTTP API 抽取运势卡片。
-        POST /checkin/api/claim-fortune
+        POST /api/checkin/claim —— body 字段为 camelCase 的 chosenIndex（0-4）。
         """
-        api_base = self._get_api_base()
-        api_cfg = self.config.get("api", {})
-        fortune_path = api_cfg.get("fortune_path", "/checkin/api/claim-fortune")
-        url = f"{api_base}{fortune_path}"
+        url = api_url(self.config, "fortune_path", "/api/checkin/claim")
 
         fortune_cfg = self.config.get("fortune", {})
 
@@ -143,7 +136,7 @@ class CheckinEngine:
         try:
             resp = session.post(
                 url,
-                json={"chosen_index": chosen_index},
+                json={"chosenIndex": chosen_index},
                 timeout=15,
             )
             data = resp.json()
@@ -152,6 +145,7 @@ class CheckinEngine:
                 fortune_value = data.get("fortune_value")
                 pool = data.get("pool", [])
                 fortune_result["handled"] = True
+                fortune_result["already_claimed"] = bool(data.get("already_claimed"))
                 fortune_result["result_value"] = str(fortune_value) if fortune_value is not None else ""
                 fortune_result["result_text"] = str(fortune_value) if fortune_value is not None else ""
                 fortune_result["pool"] = pool
@@ -170,9 +164,9 @@ class CheckinEngine:
         """
         执行完整打卡流程（纯 requests，无浏览器）。
 
-        1. requests 登录 (POST /auth/login)
-        2. HTTP API 打卡 (POST /checkin/api/do-checkin)
-        3. HTTP API 运势卡片 (POST /checkin/api/claim-fortune)
+        1. requests 登录 (POST /api/auth/login)
+        2. HTTP API 打卡 (POST /api/checkin)
+        3. HTTP API 运势卡片 (POST /api/checkin/claim)
 
         Args:
             username: 登录用户名
@@ -300,6 +294,10 @@ class CheckinEngine:
             result["success"] = True
             result["message"] = "今日已打卡"
             _add_step("done", "今日已打卡")
+        except RateLimitedError as e:
+            # 限频与密码错分开报，避免把「15 分钟内失败太多次」误报成账号密码问题
+            result["message"] = str(e)
+            _add_step("error", str(e))
         except LoginFailedError as e:
             result["message"] = str(e)
             _add_step("error", str(e))
@@ -340,4 +338,4 @@ def get_enabled_accounts() -> list[dict]:
 
 
 # ── 兼容性 re-export（保持旧导入不变）──────────────────────
-from .client import CheckinError, AlreadyCheckedInError, LoginFailedError, NetworkError  # noqa: E402,F401
+from .client import CheckinError, AlreadyCheckedInError, LoginFailedError, NetworkError, RateLimitedError  # noqa: E402,F401

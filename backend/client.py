@@ -3,7 +3,6 @@
 无 Selenium / ChromeDriver 依赖。
 """
 
-import re
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -19,6 +18,10 @@ class AlreadyCheckedInError(CheckinError):
 
 class LoginFailedError(CheckinError):
     """登录失败"""
+
+
+class RateLimitedError(CheckinError):
+    """登录触发站点限频（429）—— 与密码错误区分开，重试只会延长封禁窗口"""
 
 
 class NetworkError(CheckinError):
@@ -54,72 +57,68 @@ def build_session(config: dict) -> requests.Session:
     return s
 
 
-def _extract_csrf(html: str) -> str | None:
-    patterns = [
-        r'<input[^>]+name=["\']csrf_token["\'][^>]+value=["\']([^"\']+)',
-        r'<meta[^>]+name=["\']csrf-token["\'][^>]+content=["\']([^"\']+)',
-        r'name=["\']_csrf_token["\'][^>]+value=["\']([^"\']+)',
-        r'csrf_token\s*[:=]\s*["\']([^"\']+)',
-    ]
-    for pat in patterns:
-        m = re.search(pat, html, re.IGNORECASE)
-        if m:
-            return m.group(1)
-    return None
+def api_url(config: dict, key: str, default: str) -> str:
+    """按 config.api 里的相对路径拼出完整 URL（路径带不带前导 / 都行）。"""
+    path = config.get("api", {}).get(key) or default
+    return urljoin(get_api_base(config) + "/", path.lstrip("/"))
 
 
-def _verify_login(session: requests.Session, checkin_url: str) -> bool:
-    if not checkin_url:
-        return True
+def _verify_login(session: requests.Session, config: dict) -> bool:
+    """
+    登录后用 GET 打卡接口确认会话真的生效。
+
+    为什么不只看登录接口的 code==200：会话 cookie 在 Secure 标记与反代协议不一致时
+    会被客户端静默丢弃（站点 session.ts 里专门记录了「返回 200 登录成功，但会话不粘、
+    刷新仍未登录，且无任何报错」这个坑）。只有再发一次带 cookie 的请求才能暴露它。
+    """
+    checkin_path = config.get("api", {}).get("checkin_path") or "/api/checkin"
     try:
-        resp = session.get(checkin_url, timeout=10, allow_redirects=True)
-        final_url = resp.url.lower()
-        if "/auth/login" in final_url or "/login" in final_url:
-            return False
-        text = resp.text.lower()
-        if '<form id="loginform"' in text or 'id="loginform"' in text:
-            return False
-        return True
-    except requests.RequestException:
+        resp = session.get(api_url(config, "checkin_path", checkin_path), timeout=10)
+        return resp.status_code == 200 and resp.json().get("code") == 200
+    except (requests.RequestException, ValueError):
         return False
 
 
 def login(config: dict, username: str, password: str) -> requests.Session:
-    """POST login to /auth/login, return authenticated session (form-first, JSON fallback)."""
-    api_base = get_api_base(config)
-    site = config["site"]
-    api_cfg = config.get("api", {})
-    login_path = api_cfg.get("login_path", "/auth/login")
-    login_url = site.get("login_url", urljoin(api_base, "/auth/login"))
-    checkin_url = site.get("checkin_url", "")
+    """
+    POST /api/auth/login（JSON）→ 返回已认证的 session。
+
+    站点已从 Flask 迁到 Next.js，登录接口随之搬家：只接受 JSON body
+    {username, password}（用户名或邮箱均可），返回 {code, message, user}
+    并下发 JWT cookie（raricy_session，30 天）。失败码：
+    400 参数缺失 / 401 账号或密码错误 / 429 触发登录限频。
+    """
+    login_url = api_url(config, "login_path", "/api/auth/login")
+    # 登录页地址只用于 Referer，接口本身在 /api 下
+    page_url = config["site"].get("login_url") or get_api_base(config)
 
     session = build_session(config)
 
     try:
-        resp = session.get(login_url, timeout=15)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        raise NetworkError(f"无法访问登录页: {e}")
-
-    csrf_token = _extract_csrf(resp.text)
-    login_data = {"username": username, "password": password, "next": ""}
-    headers = {"Content-Type": "application/x-www-form-urlencoded", "Referer": login_url}
-    if csrf_token:
-        login_data["csrf_token"] = csrf_token
-
-    try:
-        session.post(login_url, data=login_data, headers=headers, timeout=15, allow_redirects=True)
+        resp = session.post(
+            login_url,
+            json={"username": username, "password": password},
+            headers={"Referer": page_url},
+            timeout=15,
+        )
     except requests.RequestException as e:
         raise NetworkError(f"登录请求失败: {e}")
 
-    if not _verify_login(session, checkin_url):
-        json_headers = {"Content-Type": "application/json", "Referer": login_url, "X-Requested-With": "XMLHttpRequest"}
-        try:
-            session.post(login_url, json={"username": username, "password": password}, headers=json_headers, timeout=15, allow_redirects=True)
-            if not _verify_login(session, checkin_url):
-                raise LoginFailedError(f"登录失败：账号 {username} 的用户名或密码错误")
-        except requests.RequestException as e:
-            raise LoginFailedError(f"登录失败: {e}")
+    try:
+        data = resp.json()
+    except ValueError:
+        raise LoginFailedError(f"登录接口返回非JSON（HTTP {resp.status_code}）")
+
+    code = data.get("code")
+    if code == 429:
+        # 站点对登录失败做了双维度限频（同用户名 15 分钟 100 次 / 同 IP 300 次），
+        # 且只统计失败。这不是密码错，继续重试只会把封禁窗口一直续上。
+        raise RateLimitedError(data.get("message") or "登录尝试过于频繁，请稍后重试")
+    if code != 200:
+        raise LoginFailedError(f"登录失败：{data.get('message') or '账号或密码错误'}")
+
+    if not _verify_login(session, config):
+        raise LoginFailedError(f"登录成功但会话未生效：{username}")
 
     session.headers.update({
         "Content-Type": "application/json",

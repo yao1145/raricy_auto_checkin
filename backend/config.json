@@ -1,6 +1,6 @@
 {
   "site": {
-    "login_url": "https://raricy.com/auth/login",
+    "login_url": "https://raricy.com/login",
     "checkin_url": "https://raricy.com/checkin"
   },
   "selectors": {
@@ -12,9 +12,11 @@
     "already_checked_in": ".checkin-button:disabled, button[disabled]#checkinBtn"
   },
   "schedule": {
-    "times": [],
+    "times": [
+      "00:00"
+    ],
     "timezone": "Asia/Shanghai",
-    "enabled": false
+    "enabled": true
   },
   "fortune": {
     "enabled": true,
@@ -28,9 +30,9 @@
     "modal_wait_timeout": 10
   },
   "api": {
-    "login_path": "/auth/login",
-    "checkin_path": "/checkin/api/do-checkin",
-    "fortune_path": "/checkin/api/claim-fortune",
+    "login_path": "/api/auth/login",
+    "checkin_path": "/api/checkin",
+    "fortune_path": "/api/checkin/claim",
     "blog_listing_path": "/blog",
     "blog_content_path": "/blog/spider/blogs",
     "blog_like_path": "/blog"
