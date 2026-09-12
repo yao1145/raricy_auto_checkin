@@ -1,0 +1,27 @@
+services:
+  checkin:
+    image: raricy-checkin:1.0.0
+    container_name: raricy-checkin
+    restart: unless-stopped
+
+    # 只发布到宿主机回环：面板本身没有鉴权，靠 SSH 隧道访问
+    ports:
+      - "127.0.0.1:5000:5000"
+
+    environment:
+      TZ: Asia/Shanghai
+
+    volumes:
+      # 面板会写这两个文件，必须可写
+      - /opt/raricy/data/config.json:/app/backend/config.json
+      - /opt/raricy/data/accounts.enc:/app/backend/accounts.enc
+      - /opt/raricy/data/runtime:/app/runtime
+      # 密钥挂在别处，这样备份 data/ 不会连带把密钥一起带走。
+      # 嵌套挂载依赖 Docker 按目标路径深度排序，更具体的路径胜出。
+      - /opt/raricy/key/accounts.key:/app/runtime/.accounts.key:ro
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
