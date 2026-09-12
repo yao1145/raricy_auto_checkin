@@ -12,13 +12,15 @@ services:
       TZ: Asia/Shanghai
 
     volumes:
+      # :Z 是给 SELinux 的私有标签，Rocky 9 默认 enforcing 时 bind mount 不带它会被拒。
+      # 在 Windows/Docker Desktop 上该标签是 no-op，所以同一份文件两边通用，不必分叉。
       # 面板会写这两个文件，必须可写
-      - /opt/raricy/data/config.json:/app/backend/config.json
-      - /opt/raricy/data/accounts.enc:/app/backend/accounts.enc
-      - /opt/raricy/data/runtime:/app/runtime
+      - /opt/raricy/data/config.json:/app/backend/config.json:Z
+      - /opt/raricy/data/accounts.enc:/app/backend/accounts.enc:Z
+      - /opt/raricy/data/runtime:/app/runtime:Z
       # 密钥挂在别处，这样备份 data/ 不会连带把密钥一起带走。
-      # 嵌套挂载依赖 Docker 按目标路径深度排序，更具体的路径胜出。
-      - /opt/raricy/key/accounts.key:/app/runtime/.accounts.key:ro
+      # 嵌套挂载依赖 Docker 按目标路径深度排序，更具体的路径胜出（已实测成立）。
+      - /opt/raricy/key/accounts.key:/app/runtime/.accounts.key:ro,Z
 
     logging:
       driver: json-file
