@@ -29,9 +29,9 @@ APScheduler 定时任务 或 Web 控制台手动触发
         ▼
 CheckinEngine.execute()
         │  requests.Session
-        ├─ POST /auth/login              → 登录（表单优先，JSON 兜底）
-        ├─ POST /checkin/api/do-checkin  → 打卡
-        └─ POST /checkin/api/claim-fortune → 运势卡片（可选）
+        ├─ POST /api/auth/login        → 登录（JSON，下发 JWT 会话 cookie）
+        ├─ POST /api/checkin           → 打卡
+        └─ POST /api/checkin/claim     → 运势卡片（可选）
         │
         ▼
 写入 runtime/logs/checkin_log.json
@@ -40,7 +40,7 @@ CheckinEngine.execute()
 - **Flask** 提供 Web 控制台与 HTTP API
 - **APScheduler** 管理每日定时打卡
 - **requests** 完成全部页面交互，无 Selenium 依赖
-- **beautifulsoup4** 解析博客目录，**sqlite3** 持久化文章与点赞记录
+- **sqlite3** 持久化文章与点赞记录（站点已改为 JSON 接口，不再需要 HTML 解析库）
 
 ### 1.4 项目结构
 
@@ -164,11 +164,11 @@ python run.py
 ### 3.2 打卡流程
 
 ```
-POST /auth/login (username + password)
-  → 获取 Session cookie
-  → POST /checkin/api/do-checkin
+POST /api/auth/login {username, password}
+  → 获取会话 cookie，并用 GET /api/checkin 复核会话真的生效
+  → POST /api/checkin
   → 检测响应：已打卡 / 打卡成功
-  → (可选) POST /checkin/api/claim-fortune
+  → (可选) POST /api/checkin/claim {chosenIndex}
   → 记录日志 → 返回结果
 ```
 
@@ -204,6 +204,8 @@ curl -X POST http://127.0.0.1:5000/api/checkin \
 
 **登录失败** —— 检查 `backend/accounts.json` 中该账号的用户名和密码。
 
+**登录提示「尝试过于频繁」** —— 站点对登录做了限频，且**只统计失败的尝试**（同一用户名 15 分钟内 100 次、同一 IP 300 次）。密码错误重试太多次会触发，等待 15 分钟即可，成功登录本身不计入。这一提示与「密码错误」是分开的，看到它就说明凭据没错、只是被限流。
+
 **端口被占用** —— `python run.py --port 8080` 换端口。
 
 **网络异常** —— 确认服务器可访问 raricy.com；默认超时 15 秒，超时返回「网络异常」提示。
@@ -238,6 +240,8 @@ raricy.com 单账号每日最多点赞 **100** 次，系统会：
 - 某账号额度归零时自动禁用点赞按钮
 - 点赞完成后在结果区展示本次消耗与今日剩余额度
 
+> **点赞需要核心用户（core 及以上）权限。** 站点对点赞接口做了角色校验，普通用户账号调用会返回 `403 需要核心用户权限`，该篇点赞会记为失败。另外站点侧还有 100 次/小时、500 次/天的限频，超出会返回 `429`。
+
 ### 4.4 博客 API
 
 | 方法     | 路径                             | 说明                                          |
@@ -268,7 +272,7 @@ raricy.com 单账号每日最多点赞 **100** 次，系统会：
 
 ### 5.2 站点设置
 
-- **登录页 URL** —— raricy.com 登录页地址（默认 `https://raricy.com/auth/login`）。
+- **登录页 URL** —— raricy.com 登录页地址（默认 `https://raricy.com/login`）。该地址只用于请求的 `Referer`，真正的登录接口由下方「登录 API 路径」指定。
 - **打卡页 URL** —— 打卡页地址（默认 `https://raricy.com/checkin`）。
 
 ### 5.3 CSS 选择器（历史兼容）
@@ -289,8 +293,8 @@ raricy.com 单账号每日最多点赞 **100** 次，系统会：
 
 ### 5.6 API 设置
 
-- **登录 / 打卡 / 运势 API 路径** —— 分别对应登录、打卡、运势接口。
-- **博客列表 / 内容 / 点赞 API 路径** —— 博客工具的目录列表、正文、点赞接口（缺省时使用默认值）。
+- **登录 / 打卡 / 运势 API 路径** —— 分别对应登录、打卡、运势接口（默认 `/api/auth/login`、`/api/checkin`、`/api/checkin/claim`）。
+- **博客列表 / 内容 / 点赞 API 路径** —— 博客工具的目录列表、正文、点赞接口（默认 `/api/blogs`、`/api/spider/blogs`、`/api/blogs`；点赞的实际请求是 `<点赞路径>/<文章 id>/like`）。
 
 ### 5.7 保存配置
 

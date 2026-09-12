@@ -5,24 +5,25 @@
 """
 
 import json
-import re
 import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
 
 import requests
-from bs4 import BeautifulSoup
 
 from .checkin import load_config
-from .client import get_api_base, login
+from .client import get_api_base, login, api_url
 from . import store
 
 # 目录扫描允许的最大连续失败页数：超过即终止扫描，
 # 避免站点持续故障（鉴权过期/宕机/持续 5xx）时后台线程无限翻页。
 MAX_CONSECUTIVE_SCAN_ERRORS = 3
 
-# raricy.com 单个账号每日点赞上限
+# raricy.com 单个账号每日点赞上限。
+# 站点侧还有一道 100 次/小时、500 次/天的限频（src/lib/rate-limit.ts 的 likeHourly /
+# likeDaily），按账号计；本地上限低于站点日限额，唯一会撞上的是「一小时窗口内跑满 100 次
+# 且中间有取消点赞重发」的情况 —— 那会拿到 429，记为该篇失败。
 DAILY_LIKE_LIMIT = 100
 
 # 单篇点赞的最大尝试次数：点赞接口既可点赞也可取消点赞，code=200 且 liked=false
@@ -62,9 +63,7 @@ class BlogEngine:
         return s
 
     def _api_url(self, path_key: str, default: str) -> str:
-        api_cfg = self.config.get("api", {})
-        path = api_cfg.get(path_key, default)
-        return get_api_base(self.config) + path
+        return api_url(self.config, path_key, default)
 
     # ── 目录扫描 ──────────────────────────────────────────
     def scan_directory(self, progress_cb=None):
@@ -78,71 +77,61 @@ class BlogEngine:
                 except Exception:
                     pass
 
-        base = self._api_url("blog_listing_path", "/blog")
+        base = self._api_url("blog_listing_path", "/api/blogs")
         total = new = errors = 0
         page = 1
         consecutive_errors = 0
-        seen_pages = set()
         _progress("scan", "正在扫描博客目录...", done=0)
 
         while True:
-            if page in seen_pages:
-                break
-            seen_pages.add(page)
             url = f"{base}?page={page}"
             try:
                 resp = self._session.get(url, timeout=15)
                 resp.raise_for_status()
-                # requests 对无 charset 的 text/html 默认按 ISO-8859-1 解码，
-                # 会乱码中文标题/作者 —— 先修正编码再交给 bs4。
-                resp.encoding = resp.apparent_encoding or resp.encoding
-                soup = BeautifulSoup(resp.text, "html.parser")
-                articles = soup.select("article.blog-item")
-                if not articles:
-                    break  # end of listing
-                rows = []
-                for a in articles:
-                    link = a.select_one("a.blog-title")
-                    if not link or not link.get("href"):
-                        continue
-                    href = link["href"].strip()
-                    if not href.startswith("/blog/"):
-                        continue
-                    article_id = href.rstrip("/").split("/")[-1]
-                    author_el = a.select_one(".blog-author span")
-                    category_el = a.select_one(".blog-category-tag")
-                    desc_el = a.select_one(".blog-description")
-                    likes_el = a.select_one(".blog-likes span")
-                    title = link.get_text(strip=True)
-                    if not title:
-                        continue
-                    rows.append({
-                        "id": article_id,
-                        "title": title,
-                        "url": urljoin(get_api_base(self.config), href),
-                        "author": author_el.get_text(strip=True) if author_el else "",
-                        "category": category_el.get_text(strip=True) if category_el else "",
-                        "description": desc_el.get_text(strip=True) if desc_el else "",
-                        "likes_count": int(re.sub(r"\D", "", likes_el.get_text() or "0") or "0") if likes_el else 0,
-                    })
-                # 先查已存在的 id，再统计本次真正新增的行数
-                existing_ids = {a["id"] for a in store.get_articles_by_ids([r["id"] for r in rows])}
-                store.upsert_articles(rows)
-                total += len(rows)
-                new += sum(1 for r in rows if r["id"] not in existing_ids)
-                _progress("scan", f"第 {page} 页，已收录 {total} 篇", done=total, total_count=None)
-                consecutive_errors = 0  # 成功读取一页即清零连续错误计数
-                page += 1
-            except requests.RequestException as e:
+                data = resp.json()
+            except (requests.RequestException, ValueError) as e:
                 errors += 1
                 consecutive_errors += 1
                 _progress("scan_error", f"第 {page} 页获取失败: {e}")
                 # 单页失败只跳过该页继续扫描；但连续失败达上限则终止，
-                # 否则 page 恒自增，既不命中 seen_pages 也无空页可 break，会一直翻页。
+                # 否则 page 恒自增、又翻不到空页可 break，会一直翻页。
                 if consecutive_errors >= MAX_CONSECUTIVE_SCAN_ERRORS:
                     break
                 page += 1
                 continue
+
+            blogs = data.get("blogs") or []
+            if not blogs:
+                break  # 空页 = 列表结束
+
+            rows = []
+            for b in blogs:
+                article_id = b.get("id")
+                title = (b.get("title") or "").strip()
+                if not article_id or not title:
+                    continue
+                rows.append({
+                    "id": article_id,
+                    "title": title,
+                    "url": urljoin(get_api_base(self.config), f"/blog/{article_id}"),
+                    "author": b.get("author") or "",
+                    "category": b.get("category") or "",
+                    "description": b.get("description") or "",
+                    "likes_count": b.get("likes_count") or 0,
+                })
+
+            # 先查已存在的 id，再统计本次真正新增的行数
+            existing_ids = {a["id"] for a in store.get_articles_by_ids([r["id"] for r in rows])}
+            store.upsert_articles(rows)
+            total += len(rows)
+            new += sum(1 for r in rows if r["id"] not in existing_ids)
+            _progress("scan", f"第 {page} 页，已收录 {total} 篇", done=total, total_count=None)
+            consecutive_errors = 0  # 成功读取一页即清零连续错误计数
+
+            # 只在服务端明确说「没有下一页」时收尾；字段缺失（老接口）则退回翻到空页为止
+            if (data.get("pagination") or {}).get("has_next") is False:
+                break
+            page += 1
 
         _progress("done", f"扫描完成，共 {total} 篇")
         return {"total": total, "new": new, "errors": errors}
@@ -161,7 +150,7 @@ class BlogEngine:
                 except Exception:
                     pass
 
-        base = self._api_url("blog_content_path", "/blog/spider/blogs")
+        base = self._api_url("blog_content_path", "/api/spider/blogs")
         total = len(article_ids)
         success = failed = 0
         _progress("fetch", f"开始抓取 {total} 篇内容...", done=0, total_count=total)
@@ -176,7 +165,9 @@ class BlogEngine:
                     if resp.status_code != 200:
                         return False, article_id, resp.status_code in (500, 502, 503, 504)
                     data = json.loads(resp.content.decode("utf-8"))
-                    content = data.get("meta", {}).get("content", "")
+                    # 正文在响应的顶层 content 字段（meta 里只有标题/作者等元信息），
+                    # 保留 meta.content 兜底以防站点回退成旧结构
+                    content = data.get("content") or data.get("meta", {}).get("content", "")
                     if content:
                         store.update_content(article_id, content)
                         return True, article_id, False
@@ -245,7 +236,7 @@ class BlogEngine:
             article_ids = article_ids[:available]
 
         self.login(username, password)
-        base = self._api_url("blog_like_path", "/blog")
+        base = self._api_url("blog_like_path", "/api/blogs")
         total = len(article_ids)          # 实际尝试的篇数（<= available）
         success = failed = skipped = 0
         _progress("like", f"开始为 {total} 篇点赞（今日剩余 {available} 次）...", done=0, total_count=total)

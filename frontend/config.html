@@ -193,15 +193,15 @@
       </div>
       <div class="form-group">
         <label for="cfg_blog_listing_path">博客列表 API 路径</label>
-        <input type="text" id="cfg_blog_listing_path" placeholder="/blog">
+        <input type="text" id="cfg_blog_listing_path" placeholder="/api/blogs">
       </div>
       <div class="form-group">
         <label for="cfg_blog_content_path">博客内容 API 路径</label>
-        <input type="text" id="cfg_blog_content_path" placeholder="/blog/spider/blogs">
+        <input type="text" id="cfg_blog_content_path" placeholder="/api/spider/blogs">
       </div>
       <div class="form-group">
         <label for="cfg_blog_like_path">博客点赞 API 路径</label>
-        <input type="text" id="cfg_blog_like_path" placeholder="/blog">
+        <input type="text" id="cfg_blog_like_path" placeholder="/api/blogs">
       </div>
     </fieldset>
   </section>
@@ -337,9 +337,9 @@ async function loadConfig() {
     document.getElementById("cfg_login_path").value = config.api?.login_path || "/api/auth/login";
     document.getElementById("cfg_checkin_path").value = config.api?.checkin_path || "/api/checkin";
     document.getElementById("cfg_fortune_path").value = config.api?.fortune_path || "/api/checkin/claim";
-    document.getElementById("cfg_blog_listing_path").value = config.api?.blog_listing_path || "/blog";
-    document.getElementById("cfg_blog_content_path").value = config.api?.blog_content_path || "/blog/spider/blogs";
-    document.getElementById("cfg_blog_like_path").value = config.api?.blog_like_path || "/blog";
+    document.getElementById("cfg_blog_listing_path").value = config.api?.blog_listing_path || "/api/blogs";
+    document.getElementById("cfg_blog_content_path").value = config.api?.blog_content_path || "/api/spider/blogs";
+    document.getElementById("cfg_blog_like_path").value = config.api?.blog_like_path || "/api/blogs";
     // 运势卡片配置
     document.getElementById("cfg_fortune_enabled").checked = config.fortune?.enabled ?? true;
     document.getElementById("cfg_fortune_modal").value = config.fortune?.modal_selector || ".fortune-modal--open";
