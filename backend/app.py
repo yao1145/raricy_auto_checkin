@@ -12,6 +12,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 
 from .checkin import CheckinEngine, load_config, save_accounts, get_enabled_accounts
+from .crypto import AccountsDecryptError
 from .scheduler import CheckinScheduler, get_scheduler, read_logs, get_today_status, get_today_status_all
 from .blog import BlogEngine
 from . import store, progress
@@ -50,9 +51,20 @@ def _store_progress(task_id: str, data: dict):
 app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
 
 
+@app.errorhandler(AccountsDecryptError)
+def _handle_accounts_decrypt_error(e):
+    """账号密文读不出来时，宁可整个接口报错，也不能让任何路径把它当成「没有账号」。"""
+    return jsonify({
+        "error": "accounts_decrypt_failed",
+        "message": str(e),
+        "hint": "请确认 runtime/.accounts.key 与 backend/accounts.enc 是配套的同一套。"
+                "账号不会被自动覆盖，修好之前请勿在配置面板保存。",
+    }), 500
+
+
 # ── 配置读写工具 ──────────────────────────────────────────
 def save_config(data: dict):
-    """保存配置到文件（accounts 单独保存到 accounts.json，不写入 config.json）"""
+    """保存配置到文件（accounts 单独加密保存到 accounts.enc，不写入 config.json）"""
     accounts = data.pop("accounts", None)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

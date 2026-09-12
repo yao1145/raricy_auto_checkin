@@ -12,6 +12,7 @@ backend/logs/
 
 # Accounts (secrets, not committed)
 backend/accounts.json
+backend/accounts.enc
 
 # Local tooling state & design docs
 .superpowers/

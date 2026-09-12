@@ -4,6 +4,8 @@
 """
 
 import json
+import logging
+import os
 import random
 import time
 from datetime import datetime
@@ -11,16 +13,20 @@ from pathlib import Path
 
 import requests
 
+from .crypto import AccountsDecryptError, decrypt_bytes, encrypt_bytes, load_or_create_key
 from .client import (
     build_session, login as client_login, api_url,
     CheckinError, AlreadyCheckedInError, LoginFailedError, NetworkError, RateLimitedError,
 )
 
+logger = logging.getLogger(__name__)
+
 # ── 项目路径 ──────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
 CONFIG_PATH = BASE_DIR / "config.json"
-ACCOUNTS_PATH = BASE_DIR / "accounts.json"
+ACCOUNTS_ENC_PATH = BASE_DIR / "accounts.enc"
+ACCOUNTS_PLAIN_PATH = BASE_DIR / "accounts.json"
 
 
 # ── 配置工具 ──────────────────────────────────────────────
@@ -35,17 +41,39 @@ def load_config() -> dict:
 
 
 def load_accounts() -> list | None:
-    """读取账号列表。文件不存在返回 None（兼容旧配置内嵌 accounts）。"""
-    if not ACCOUNTS_PATH.exists():
-        return None
-    with open(ACCOUNTS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """
+    读取账号列表。判定顺序固定，不可调换：
+
+      1. accounts.enc 存在 → 解密。失败即抛 AccountsDecryptError，
+         **绝不回退明文、绝不返回空列表或 None**。
+      2. 密文不存在、明文存在 → 读明文并告警（迁移过渡期）。
+      3. 两者都不存在 → None（沿用「回退 config.json 内嵌 accounts」的旧兼容路径）。
+
+    第 1 步不回退是安全要求而非实现细节：否则任何能写文件的人删掉密文
+    塞一份明文，就能让应用降级到明文路径运行。
+    """
+    if ACCOUNTS_ENC_PATH.exists():
+        raw = decrypt_bytes(ACCOUNTS_ENC_PATH.read_bytes(), load_or_create_key())
+        return json.loads(raw.decode("utf-8"))
+
+    if ACCOUNTS_PLAIN_PATH.exists():
+        logger.warning(
+            "检测到明文账号文件 %s —— 建议执行 python -m backend.accounts_tool encrypt 迁移",
+            ACCOUNTS_PLAIN_PATH,
+        )
+        with open(ACCOUNTS_PLAIN_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    return None
 
 
 def save_accounts(accounts: list) -> None:
-    """保存账号列表到 accounts.json"""
-    with open(ACCOUNTS_PATH, "w", encoding="utf-8") as f:
-        json.dump(accounts, f, ensure_ascii=False, indent=2)
+    """加密写入 accounts.enc。原子写：先写 .tmp 再 os.replace，避免留下半截密文。"""
+    payload = json.dumps(accounts, ensure_ascii=False, indent=2).encode("utf-8")
+    token = encrypt_bytes(payload, load_or_create_key())
+    tmp = ACCOUNTS_ENC_PATH.with_name(ACCOUNTS_ENC_PATH.name + ".tmp")
+    tmp.write_bytes(token)
+    os.replace(tmp, ACCOUNTS_ENC_PATH)
 
 
 # ── 打卡引擎 ──────────────────────────────────────────────
