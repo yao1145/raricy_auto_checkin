@@ -19,6 +19,8 @@ raricy.com 自动打卡系统通过 `requests` 直接调用网站 HTTP API 完�
 - **实时进度** —— 打卡 / 博客任务异步执行，前端 500ms 轮询展示步骤与进度条
 - **博客工具** —— 目录扫描、内容抓取、批量点赞，SQLite 持久化，支持筛选与排序
 - **Web 控制台** —— 四面板（控制中心 / 自动打卡 / 博客工具 / 系统配置）+ 科幻动态背景
+- **账号密文存储** —— 账号凭据以 Fernet 密文落盘，密钥独立存放，误传/误提交不会泄露密码
+- **Docker 部署** —— 可打包为镜像在 Rocky Linux 9 等服务器上无人值守运行
 - **高度可配置** —— 站点、选择器、定时、运势、API 路径均可通过配置面板在线修改
 
 ### 1.3 技术架构
@@ -40,6 +42,7 @@ CheckinEngine.execute()
 - **Flask** 提供 Web 控制台与 HTTP API
 - **APScheduler** 管理每日定时打卡
 - **requests** 完成全部页面交互，无 Selenium 依赖
+- **cryptography**（Fernet）加密账号凭据
 - **sqlite3** 持久化文章与点赞记录（站点已改为 JSON 接口，不再需要 HTML 解析库）
 
 ### 1.4 项目结构
@@ -49,20 +52,28 @@ raricy_auto_checkin/
 ├── run.py                      # 项目入口（启动 Flask + 调度器）
 ├── launcher.py                 # 桌面快捷方式启动器（检测服务 → 启动/打开面板）
 ├── start_checkin.bat           # 快捷方式入口脚本（纯 ASCII，调用 launcher.py）
+├── Dockerfile                  # 容器镜像定义
+├── docker-compose.yml          # 服务器侧编排（回环端口 + 挂载 + SELinux :Z）
+├── .dockerignore               # 构建上下文排除（含凭据文件）
 ├── README.md                   # 本文件
 ├── CLAUDE.md                   # Claude Code 指引
 ├── favicon.ico                 # 站点图标（同时作为快捷方式图标）
+├── deploy/
+│   └── DEPLOY.md               # Rocky Linux 9 部署手册
+├── tests/                      # 单元测试（标准库 unittest，仅覆盖账号加密层）
 ├── backend/
 │   ├── __init__.py             # 包标记
 │   ├── app.py                  # Flask API 服务 + 进度追踪 + 前端路由
 │   ├── checkin.py              # requests 打卡引擎（核心逻辑）+ 配置读取
 │   ├── client.py               # 共享纯 requests 登录客户端（打卡/博客复用）
+│   ├── crypto.py               # 账号文件加解密 + 密钥管理（Fernet）
+│   ├── accounts_tool.py        # 账号迁移 CLI（明文 → 密文）
 │   ├── blog.py                 # 博客引擎：目录扫描 / 内容抓取 / 批量点赞
 │   ├── store.py                # SQLite 存储层（文章 + 点赞记录）
 │   ├── progress.py             # 通用任务进度存储（内存）
 │   ├── scheduler.py            # APScheduler 定时调度器
 │   ├── config.json             # 站点/选择器/定时/运势/API 配置（不含账号）
-│   ├── accounts.json           # 账号列表（含密码，已 gitignore，不提交）
+│   ├── accounts.enc            # 账号密文（已 gitignore，不提交）
 │   └── requirements.txt        # Python 依赖
 ├── frontend/
 │   ├── index.html              # 控制中心（状态总览 + 功能导航）
@@ -202,7 +213,7 @@ curl -X POST http://127.0.0.1:5000/api/checkin \
 
 ### 3.5 常见问题
 
-**登录失败** —— 检查 `backend/accounts.json` 中该账号的用户名和密码。
+**登录失败** —— 在「系统配置」面板检查该账号的用户名和密码（账号以密文存在 `backend/accounts.enc`，无法直接打开查看）。
 
 **登录提示「尝试过于频繁」** —— 站点对登录做了限频，且**只统计失败的尝试**（同一用户名 15 分钟内 100 次、同一 IP 300 次）。密码错误重试太多次会触发，等待 15 分钟即可，成功登录本身不计入。这一提示与「密码错误」是分开的，看到它就说明凭据没错、只是被限流。
 
@@ -269,6 +280,7 @@ raricy.com 单账号每日最多点赞 **100** 次，系统会：
 - **账号列表** —— 展示全部账号，右侧「启用 / 禁用」徽章点击即可切换该账号是否参与打卡，点击「移除」删除账号。
 - **添加账号** —— 底部输入用户名与密码，点击「添加账号」加入列表。
 - 密码统一以 `****` 脱敏显示；新增账号保存真实密码，已存在的账号保持 `****` 即保留原密码不变。
+- 账号凭据以 Fernet 密文保存在 `backend/accounts.enc`，密钥在 `runtime/.accounts.key`（首次保存时自动生成）。**密钥丢失则账号无法恢复**，请单独备份。从旧版本升级时执行 `python -m backend.accounts_tool encrypt` 完成明文到密文的迁移。
 
 ### 5.2 站点设置
 
@@ -300,9 +312,33 @@ raricy.com 单账号每日最多点赞 **100** 次，系统会：
 
 点击页面底部「保存配置」后：
 
-- 账号写入 `backend/accounts.json`（界面显示脱敏，但保留真实密码）
+- 账号加密写入 `backend/accounts.enc`（界面显示脱敏，但保留真实密码）
 - 其余配置写入 `backend/config.json`
 - 后端自动重启调度器，使新的定时设置立即生效
+
+---
+
+## 六、服务器部署（Docker）
+
+本系统可打包成容器，在 Rocky Linux 9 等服务器上长期无人值守运行。完整步骤见 [`deploy/DEPLOY.md`](deploy/DEPLOY.md)，这里只概述流程：
+
+```
+开发机                                        服务器
+docker build --platform linux/amd64
+  → docker save（约 54 MB）
+  → scp ───────────────────────────────────>  docker load
+                                              docker compose up -d
+                                                → 宿主 127.0.0.1:5000
+  ssh -L 5000:127.0.0.1:5000 ──────────────>  本地浏览器打开面板
+```
+
+三点关键设计取舍：
+
+- **面板不暴露到公网。** 容器端口只发布到宿主机回环，经 SSH 隧道访问 —— 面板本身没有鉴权，能打开它的人就能读你的账号列表、触发打卡、改配置、删账号。
+- **服务器不需要访问 Docker Hub。** 镜像由开发机构建后 `docker save` / `docker load` 搬运，服务器全程不需要外网拉取镜像。
+- **必须单进程。** 系统是「Flask + 进程内 APScheduler」；若用多 worker 的 WSGI 服务器，每个 worker 会各起一份调度器，同一账号会被重复打卡。容器直接跑 `python run.py`，这是刻意的。
+
+账号凭据在服务器上同样是密文，且**密钥单独挂载**（不与数据目录放在一起），这样备份数据目录不会连带把密钥一起带走。
 
 ---
 
