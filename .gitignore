@@ -23,3 +23,6 @@ raricy/
 # iOS generated (produced by xcodegen + xcodebuild, not committed)
 ios/build/
 ios/RaricyCheckin.xcodeproj/
+
+# 部署用镜像 tar（docker save 的产物，约 54MB，`deploy/DEPLOY.md` 2.1 生成）
+*.tar
