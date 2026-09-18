@@ -287,6 +287,7 @@ def blog_index():
 def blog_articles():
     """分页 + 服务端筛选 + 排序的文章列表"""
     args = request.args
+    q = args.get("q", "").strip() or None
     author = args.get("author", "").strip() or None
     category = args.get("category", "").strip() or None
     min_likes = args.get("min_likes", type=int)
@@ -302,7 +303,7 @@ def blog_articles():
 
     offset = (page - 1) * page_size
     rows, total = store.query_articles(
-        author=author, category=category, min_likes=min_likes, status=status,
+        title=q, author=author, category=category, min_likes=min_likes, status=status,
         sort=sort, order=order, offset=offset, limit=page_size,
     )
     likes = store.get_likes_for_articles([r["id"] for r in rows])
@@ -317,6 +318,7 @@ def blog_articles():
 def blog_articles_all():
     """加载全部文章（同一筛选/排序，无分页；约 1 万条上限）"""
     args = request.args
+    q = args.get("q", "").strip() or None
     author = args.get("author", "").strip() or None
     category = args.get("category", "").strip() or None
     min_likes = args.get("min_likes", type=int)
@@ -328,7 +330,7 @@ def blog_articles_all():
     if order not in ("asc", "desc"):
         order = "asc"
     rows, total = store.query_articles(
-        author=author, category=category, min_likes=min_likes, status=status,
+        title=q, author=author, category=category, min_likes=min_likes, status=status,
         sort=sort, order=order, offset=0, limit=10000,
     )
     likes = store.get_likes_for_articles([r["id"] for r in rows])
