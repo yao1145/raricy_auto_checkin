@@ -410,6 +410,7 @@ function _renderLogRow(l, hiddenAttr) {
 
 // ── 账号选择状态 ─────────────────────────────────────────
 let selectedAccounts = new Set();  // 选中的账号用户名集合
+let selectionInitialized = false;  // 默认全选只做一次；之后空选是用户的真实选择
 let allAccounts = [];              // 所有启用账号列表
 
 async function loadAccounts() {
@@ -423,12 +424,15 @@ async function loadAccounts() {
 function renderAccountChips() {
   const container = document.getElementById("accountChips");
   if (allAccounts.length === 0) {
+    selectionInitialized = false;  // 列表空了：下次再拿到账号时重新默认全选
     container.innerHTML = '<span style="font-size:12px;color:var(--text-dim);">暂无账号，请在「系统配置」中添加</span>';
     return;
   }
-  // 默认全选
-  if (selectedAccounts.size === 0) {
+  // 首次拿到账号列表时默认全选，只做一次。之前写成「size === 0 就补全」，
+  // 导致「取消全选」和「逐个点掉最后一个」都会被下一次渲染重新填满。
+  if (!selectionInitialized) {
     allAccounts.forEach(a => selectedAccounts.add(a.username));
+    selectionInitialized = true;
   }
   container.innerHTML = allAccounts.map(a => {
     const sel = selectedAccounts.has(a.username) ? " selected" : "";
