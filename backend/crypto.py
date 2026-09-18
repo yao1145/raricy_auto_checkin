@@ -13,8 +13,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-RUNTIME_DIR = Path(__file__).resolve().parent.parent / "runtime"
-KEY_PATH = RUNTIME_DIR / ".accounts.key"
+from .paths import KEY_PATH
 
 
 class AccountsDecryptError(Exception):

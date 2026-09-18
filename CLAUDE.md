@@ -31,23 +31,30 @@ python -m unittest discover -s tests -t .
 
 ## Docker / 服务器部署
 
-The Flask app runs in a container on Rocky Linux 9; the full runbook is `deploy/DEPLOY.md`. Build and ship:
+The Flask app runs in a container on Rocky Linux 9; the full runbook is `deploy/DEPLOY.md`. **The server builds the image from source** — no image tarball travels over the wire any more:
 
 ```bash
-docker build --platform linux/amd64 -t raricy-checkin:1.0.0 .
-docker save raricy-checkin:1.0.0 -o raricy-checkin-1.0.0.tar   # ~54 MB
-scp raricy-checkin-1.0.0.tar docker-compose.yml user@server:/opt/raricy/
-# on the server:
-docker load -i raricy-checkin-1.0.0.tar && docker compose up -d
+# 服务器上，首次
+sudo mkdir -p /opt/raricy/data /opt/raricy/key
+git clone https://github.com/yao1145/raricy_auto_checkin.git /opt/raricy/app
+# …按 DEPLOY.md 灌入 data/ 与 key/，然后
+cd /opt/raricy/app && sudo docker compose up -d --build
+
+# 以后的每次更新
+cd /opt/raricy/app && git pull && sudo docker compose up -d --build
 ```
 
-Three constraints that are not negotiable:
+Four constraints that are not negotiable:
 
 - **Single process only.** The app is `Flask + in-process APScheduler`. **Never put gunicorn/uvicorn with multiple workers in front of it** — every worker starts its own scheduler and every account gets checked in repeatedly. `use_reloader=False` in `run.py` exists for the same reason. The Dockerfile deliberately runs `python run.py` directly.
 - **The container binds `0.0.0.0`, the host port binds `127.0.0.1`.** Binding `127.0.0.1` *inside* the container makes the published port unreachable (container loopback ≠ host loopback). The loopback restriction is enforced by `docker-compose.yml`'s `127.0.0.1:5000:5000`.
 - **No authentication on the panel.** Anyone who can reach the port can read the account list, trigger check-ins, rewrite config and delete accounts. That is why the port is published to host loopback only and access goes through an SSH tunnel.
+- **Only directory bind mounts, never single files.** A single-file bind mount is a mount point, and Linux `rename(2)` refuses to replace a mount point — it returns `EBUSY`. `accounts.enc` is written with `.tmp` + `os.replace`, so mounting it as a single file makes **every** panel save return HTTP 500, while the same code runs fine under local `python run.py`. Mutable paths are injectable through `RARICY_DATA_DIR` / `RARICY_RUNTIME_DIR` / `RARICY_KEY_PATH` (`backend/paths.py`, defaults = the local layout); `tests/test_deploy_mounts.py` enforces the directory-only rule.
 
-Build note for networks that can't reach `registry-1.docker.io` (common in China): pull the base image from a mirror and retag it locally, so no mirror URL ever lands in the Dockerfile — `docker pull docker.m.daocloud.io/library/python:3.13-slim && docker tag ... python:3.13-slim`. The server itself never needs registry access, because images arrive via `docker save` / `docker load`.
+Build notes for networks that can't reach Docker Hub / PyPI (common in China), neither of which puts a mirror URL in the repo:
+
+- Base image: set `registry-mirrors` in `/etc/docker/daemon.json` on the server (or one-off `docker save` / `docker load` of `python:3.13-slim`).
+- pip: the Dockerfile defaults to the Tsinghua mirror via `ARG PIP_INDEX_URL`; override with `docker compose build --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`.
 
 ### Windows-specific pitfalls
 

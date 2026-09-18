@@ -5,7 +5,6 @@
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -13,12 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.jobstores.base import JobLookupError
 
 from .checkin import CheckinEngine, load_config, get_enabled_accounts
-
-# ── 路径 ──────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
-RUNTIME_DIR = BASE_DIR.parent / "runtime"
-CONFIG_PATH = BASE_DIR / "config.json"
-LOG_PATH = RUNTIME_DIR / "logs" / "checkin_log.json"
+from .paths import CONFIG_PATH, LOG_PATH
 
 logger = logging.getLogger(__name__)
 

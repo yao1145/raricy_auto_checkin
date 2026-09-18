@@ -7,7 +7,6 @@ import logging
 import threading
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -15,6 +14,7 @@ from .checkin import CheckinEngine, load_config, save_accounts, get_enabled_acco
 from .crypto import AccountsDecryptError
 from .scheduler import CheckinScheduler, get_scheduler, read_logs, get_today_status, get_today_status_all
 from .blog import BlogEngine
+from .paths import ACCOUNTS_ENC_PATH, CONFIG_PATH, DATA_DIR, FRONTEND_DIR, KEY_PATH, RUNTIME_DIR
 from . import store, progress
 
 # ── 日志配置 ──────────────────────────────────────────────
@@ -23,12 +23,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("app")
-
-# ── 路径 ──────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
-RUNTIME_DIR = BASE_DIR.parent / "runtime"
-CONFIG_PATH = BASE_DIR / "config.json"
-FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 # ── 打卡进度存储（内存）───────────────────────────────────
 # 结构: { task_id: { status, steps, results, ... } }
@@ -57,19 +51,25 @@ def _handle_accounts_decrypt_error(e):
     return jsonify({
         "error": "accounts_decrypt_failed",
         "message": str(e),
-        "hint": "请确认 runtime/.accounts.key 与 backend/accounts.enc 是配套的同一套。"
+        "hint": f"请确认密钥 {KEY_PATH} 与密文 {ACCOUNTS_ENC_PATH} 是配套的同一套。"
                 "账号不会被自动覆盖，修好之前请勿在配置面板保存。",
+        "paths": {"key": str(KEY_PATH), "accounts": str(ACCOUNTS_ENC_PATH)},
     }), 500
 
 
 # ── 配置读写工具 ──────────────────────────────────────────
 def save_config(data: dict):
-    """保存配置到文件（accounts 单独加密保存到 accounts.enc，不写入 config.json）"""
+    """保存配置到文件（accounts 单独加密保存到 accounts.enc，不写入 config.json）
+
+    先写 accounts 再写 config.json。accounts 那步要加密 + 原子替换，失败面更大，
+    让它先失败就不会出现「面板报保存失败、config.json 却已经改了」的半截状态 ——
+    凭证比设置更值钱，也更容易被这种静默偏差搞乱。
+    """
     accounts = data.pop("accounts", None)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
     if accounts is not None:
         save_accounts(accounts)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def mask_sensitive(config: dict) -> dict:
@@ -634,6 +634,7 @@ def update_config():
 def create_app():
     """创建并初始化 Flask 应用（工厂函数）"""
     # 确保必要目录存在（runtime 必须先于 blog 数据库初始化）
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     (RUNTIME_DIR / "logs").mkdir(parents=True, exist_ok=True)
     store.init_db()

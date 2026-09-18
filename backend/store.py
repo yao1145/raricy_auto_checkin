@@ -3,11 +3,11 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-RUNTIME_DIR = Path(__file__).resolve().parent.parent / "runtime"
+from .paths import BLOG_DB_PATH
 
 
 def get_db_path() -> Path:
-    return RUNTIME_DIR / "blog.db"
+    return BLOG_DB_PATH
 
 
 def _conn():

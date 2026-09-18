@@ -11,17 +11,24 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# 依赖先于源码 COPY，改代码不会失效依赖层缓存
+# 依赖先于源码 COPY，改代码不会失效依赖层缓存。
+# 默认走清华源：服务器上本地 build 时不用改文件就能装依赖。换源用
+#   docker compose build --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+# 给默认值而不是把某个源写死进仓库 —— 仓库是公开的，硬编码等于替所有 clone 的人做决定。
+# （与基础镜像那条原则一致：镜像地址也不进 Dockerfile。）
 COPY backend/requirements.txt backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r backend/requirements.txt
 
 COPY run.py ./
 COPY backend/ backend/
 COPY frontend/ frontend/
 
-# 非 root 运行；uid 固定 1000，宿主机数据目录要 chown 成同一个 uid
+# 非 root 运行；uid 固定 1000，宿主机数据目录要 chown 成同一个 uid。
+# data/ 与 key/ 平时由 compose 挂进来；这里先建好并交出属主，避免挂载缺席时
+# 由 root 属主落地、导致 uid 1000 反而写不进去。
 RUN useradd -u 1000 -m appuser \
- && mkdir -p /app/runtime \
+ && mkdir -p /app/runtime /app/data/runtime /app/key \
  && chown -R appuser:appuser /app
 USER appuser
 

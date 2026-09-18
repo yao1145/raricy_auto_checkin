@@ -13,8 +13,9 @@ import argparse
 import json
 import sys
 
-from .checkin import ACCOUNTS_ENC_PATH, ACCOUNTS_PLAIN_PATH, CONFIG_PATH, save_accounts
-from .crypto import KEY_PATH, AccountsDecryptError, decrypt_bytes, load_or_create_key
+from .checkin import save_accounts
+from .crypto import AccountsDecryptError, decrypt_bytes, load_or_create_key
+from .paths import ACCOUNTS_ENC_PATH, ACCOUNTS_PLAIN_PATH, CONFIG_PATH, KEY_PATH
 
 LEGACY_HINT = (
     "config.json 的 site.username / site.password 或内嵌 accounts 数组仍有明文密码，"

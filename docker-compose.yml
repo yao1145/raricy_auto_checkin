@@ -1,6 +1,9 @@
 services:
   checkin:
-    image: raricy-checkin:1.0.0
+    # 源码即构建上下文：服务器上 git pull 之后 `docker compose up -d --build`
+    # 就能更新，不必再从开发机传 54MB 的镜像 tar。
+    build: .
+    image: raricy-checkin:local
     container_name: raricy-checkin
     restart: unless-stopped
 
@@ -10,17 +13,24 @@ services:
 
     environment:
       TZ: Asia/Shanghai
+      # 容器内的可变路径全部指向挂载点。默认值指向源码目录（本地开发用），
+      # 容器里必须显式覆盖 —— 见 backend/paths.py。
+      RARICY_DATA_DIR: /app/data
+      RARICY_RUNTIME_DIR: /app/data/runtime
+      RARICY_KEY_PATH: /app/key/accounts.key
 
     volumes:
+      # ⚠️ 只能挂目录，不要挂单个文件。
+      # 单文件 bind mount 在内核里是挂载点，rename(2) 覆盖挂载点会返回 EBUSY，
+      # 而 accounts.enc 是 .tmp + os.replace 的原子写 —— 挂单文件会让面板的
+      # 每一次保存都 500。tests/test_deploy_mounts.py 钉住这条约束。
+      #
       # :Z 是给 SELinux 的私有标签，Rocky 9 默认 enforcing 时 bind mount 不带它会被拒。
       # 在 Windows/Docker Desktop 上该标签是 no-op，所以同一份文件两边通用，不必分叉。
-      # 面板会写这两个文件，必须可写
-      - /opt/raricy/data/config.json:/app/backend/config.json:Z
-      - /opt/raricy/data/accounts.enc:/app/backend/accounts.enc:Z
-      - /opt/raricy/data/runtime:/app/runtime:Z
-      # 密钥挂在别处，这样备份 data/ 不会连带把密钥一起带走。
-      # 嵌套挂载依赖 Docker 按目标路径深度排序，更具体的路径胜出（已实测成立）。
-      - /opt/raricy/key/accounts.key:/app/runtime/.accounts.key:ro,Z
+      - /opt/raricy/data:/app/data:Z
+      # 密钥挂成只读目录：备份 data/ 时不会连带把密钥一起带走。
+      # 密钥只被读取，从不被替换，所以只读挂载不会有上面的 EBUSY 问题。
+      - /opt/raricy/key:/app/key:ro,Z
 
     logging:
       driver: json-file

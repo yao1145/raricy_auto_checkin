@@ -322,23 +322,22 @@ raricy.com 单账号每日最多点赞 **100** 次，系统会：
 
 ## 六、服务器部署（Docker）
 
-本系统可打包成容器，在 Rocky Linux 9 等服务器上长期无人值守运行。完整步骤见 [`deploy/DEPLOY.md`](deploy/DEPLOY.md)，这里只概述流程：
+本系统可跑在容器里，在 Rocky Linux 9 等服务器上长期无人值守运行。**源码放在服务器上，镜像由服务器本地构建** —— 改代码只需 `git push` + `git pull`，不用再从开发机传镜像包。完整步骤见 [`deploy/DEPLOY.md`](deploy/DEPLOY.md)，这里只概述流程：
 
 ```
 开发机                                        服务器
-docker build --platform linux/amd64
-  → docker save（约 54 MB）
-  → scp ───────────────────────────────────>  docker load
-                                              docker compose up -d
+git push ────────────────────────────────>  git clone / git pull（仓库公开）
+                                              docker compose up -d --build
                                                 → 宿主 127.0.0.1:5000
   ssh -L 5000:127.0.0.1:5000 ──────────────>  本地浏览器打开面板
 ```
 
-三点关键设计取舍：
+四点关键设计取舍：
 
 - **面板不暴露到公网。** 容器端口只发布到宿主机回环，经 SSH 隧道访问 —— 面板本身没有鉴权，能打开它的人就能读你的账号列表、触发打卡、改配置、删账号。
-- **服务器不需要访问 Docker Hub。** 镜像由开发机构建后 `docker save` / `docker load` 搬运，服务器全程不需要外网拉取镜像。
 - **必须单进程。** 系统是「Flask + 进程内 APScheduler」；若用多 worker 的 WSGI 服务器，每个 worker 会各起一份调度器，同一账号会被重复打卡。容器直接跑 `python run.py`，这是刻意的。
+- **只挂目录，不挂单个文件。** 单文件 bind mount 在内核里是挂载点，`rename(2)` 覆盖挂载点会返回 `EBUSY`；而 `accounts.enc` 是 `.tmp` + `os.replace` 的原子写 —— 挂单文件会让面板的**每一次保存都 500**，本地直接跑却完全正常。可变路径通过 `RARICY_DATA_DIR` / `RARICY_RUNTIME_DIR` / `RARICY_KEY_PATH` 注入（见 `backend/paths.py`），`tests/test_deploy_mounts.py` 钉住这条约束。
+- **服务器只在首次构建时需要外网**（拉基础镜像 + pip 装依赖），之后 `git pull` 重建都能命中缓存。国内网络下用 registry 镜像源 + pip 源，配置方式见 `deploy/DEPLOY.md` 第 1.1 节。
 
 账号凭据在服务器上同样是密文，且**密钥单独挂载**（不与数据目录放在一起），这样备份数据目录不会连带把密钥一起带走。
 

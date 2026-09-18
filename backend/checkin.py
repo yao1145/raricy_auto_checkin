@@ -9,7 +9,6 @@ import os
 import random
 import time
 from datetime import datetime
-from pathlib import Path
 
 import requests
 
@@ -18,15 +17,9 @@ from .client import (
     build_session, login as client_login, api_url,
     CheckinError, AlreadyCheckedInError, LoginFailedError, NetworkError, RateLimitedError,
 )
+from .paths import ACCOUNTS_ENC_PATH, ACCOUNTS_PLAIN_PATH, CONFIG_PATH
 
 logger = logging.getLogger(__name__)
-
-# ── 项目路径 ──────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = BASE_DIR.parent
-CONFIG_PATH = BASE_DIR / "config.json"
-ACCOUNTS_ENC_PATH = BASE_DIR / "accounts.enc"
-ACCOUNTS_PLAIN_PATH = BASE_DIR / "accounts.json"
 
 
 # ── 配置工具 ──────────────────────────────────────────────

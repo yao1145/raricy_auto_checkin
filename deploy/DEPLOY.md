@@ -1,6 +1,9 @@
 # 部署到 Rocky Linux 9（Docker）
 
-把本系统打包成镜像，在 Rocky 9 服务器上无人值守运行，面板通过 SSH 隧道访问。
+把本系统跑在 Rocky 9 服务器上无人值守，面板通过 SSH 隧道访问。
+
+**部署形态：服务器上放一份源码，`git pull` 之后在服务器本地构建镜像。**
+开发机不再需要 `docker save` 传 54 MB 的镜像 tar —— 改一行代码只要 `git push` + 服务器 `git pull`。
 
 ---
 
@@ -8,19 +11,17 @@
 
 **已在开发机（Windows + Docker Desktop）实际验证过的：**
 
-- `docker build --platform linux/amd64` 构建成功，镜像 231MB
-- `docker save` → 删除本地镜像 → `docker load` 往返成功，tar 54MB，载入后 tag 与 `docker-compose.yml` 引用一致
-- 镜像内容干净：无 `accounts.json` / `accounts.enc` / `runtime/` 数据
-- 容器以 uid 1000 非 root 运行；`tzdata` 正常解析 `Asia/Shanghai`
-- 挂载后容器能解出账号、真实打卡成功、日志落到宿主机挂载目录
-- **嵌套挂载成立**：密钥文件从独立目录挂进已被挂载的 `/app/runtime` 内，与 data 目录的内容共存
-- `:Z` 标签在 Docker Desktop 上是 no-op（加不加都能跑）
-- 容器重启恰好注册一次定时任务，无重复调度器
+- `docker compose build` 构建成功（走清华 pip 源）
+- 以「只挂目录」的方式挂载后，容器能解出账号、**面板保存配置返回 200**（旧版单文件挂载下必然 500，见第 8 节）
+- 保存后宿主机上的 `accounts.enc` 密文确实被替换、能用密钥解出正确的账号数、无残留 `.tmp`
+- 容器以 uid 1000 非 root 运行；`TZ` 正常解析 `Asia/Shanghai`
+- `RARICY_DATA_DIR` / `RARICY_RUNTIME_DIR` / `RARICY_KEY_PATH` 三个环境变量在容器内解析到挂载点；日志目录与 `blog.db` 都落在宿主机数据目录里
 
 **未经实测、需你在服务器上确认的：**
 
 - 第 1 节的全部 `dnf` / `systemctl` 命令（开发机是 Windows，无法执行）
 - 第 3 节的 SELinux 行为（`chcon` / `restorecon` / `semanage` 在开发机不可用）
+- 服务器上 `git clone` 的可达性，以及 `daemon.json` 配的 registry 镜像源
 - `download.docker.com` 与 `mirrors.aliyun.com` 在你服务器网络下的可达性
 
 遇到与文档不符的情况，请把实际报错发我，我来更新这份手册。
@@ -35,7 +36,7 @@
 # 在开发机，确认这三件事都正常
 python run.py --port 5099 --no-browser      # 1. 面板能打开
 python -m backend.accounts_tool status      # 2. 密文可解密，账号数正确
-python -m unittest discover -s tests -t .   # 3. 测试全绿（Ran 14, OK）
+python -m unittest discover -s tests -t .   # 3. 测试全绿（含部署约束测试）
 ```
 
 ---
@@ -54,7 +55,7 @@ sudo dnf install -y dnf-plugins-core
 # 添加 Docker 官方仓库
 sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 
-# 安装（含 compose v2 插件，第 4 节要用 `docker compose` 子命令）
+# 安装（含 compose v2 插件，第 5 节要用 `docker compose` 子命令）
 sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 sudo systemctl enable --now docker
@@ -71,68 +72,76 @@ sudo usermod -aG docker "$USER"      # 让当前用户免 sudo；需重新登录
 >
 > 这一步未经实测，若失败请把报错发我。
 
-**服务器全程不需要访问 Docker Hub** —— 镜像由开发机 `docker save` 传过来 `docker load`，所以第 3 节那种「国内拉不动基础镜像」的问题在这里不会出现。
+### 1.1 让服务器能拉基础镜像
+
+现在镜像是在**服务器上构建**的，所以服务器第一次 build 需要能拉到 `python:3.13-slim`。
+配一次 registry 镜像源即可，以后每次 build 都受益：
+
+```bash
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{
+  "registry-mirrors": ["https://docker.m.daocloud.io"]
+}
+EOF
+sudo systemctl restart docker
+sudo docker pull python:3.13-slim        # 验证：能拉下来再继续
+```
+
+> 阿里云、daocloud 等镜像源可用性会变，若上面这个不通，换任一可用的 registry 镜像即可 —— 这个地址只存在服务器上，**不会进仓库**。
 
 ---
 
-## 2. 构建镜像、准备目录并传输
-
-分四步，**顺序不能颠倒** —— 尤其是 2.2 必须在 2.3 之前，否则 `scp` 会 `Permission denied`。
-
-### 2.1 开发机：构建镜像并导出 tar
+## 2. 准备目录与源码
 
 ```bash
-docker build --platform linux/amd64 -t raricy-checkin:1.0.0 .
-docker save raricy-checkin:1.0.0 -o raricy-checkin-1.0.0.tar     # 约 54 MB
-```
-
-`--platform linux/amd64` 不能省：在 ARM 机器上构建出的镜像，服务器 `docker load` 后跑不起来。
-
-> 若构建卡在 `FROM python:3.13-slim` 并报 `dial tcp 128.242.245.221:443`，是拉不到 Docker Hub 的基础镜像（国内网络常见）。用国内镜像源拉下来后打一个本地 tag 即可，**不要把镜像地址写进 Dockerfile**（那会污染仓库，服务器也用不上）：
->
-> ```bash
-> docker pull docker.m.daocloud.io/library/python:3.13-slim
-> docker tag docker.m.daocloud.io/library/python:3.13-slim python:3.13-slim
-> ```
-
-### 2.2 服务器：建目录，并先交给当前用户
-
-```bash
+# 2.1 数据与密钥目录（如果之前已经部署过，这两个目录已存在，跳过）
 sudo mkdir -p /opt/raricy/data/runtime /opt/raricy/key
 
-# 关键一步：目录刚建出来属 root，普通用户 scp 不进去。
-# 先把 /opt/raricy 整棵交给你的登录用户，传完文件再交给容器 uid（见 2.4）。
-sudo chown -R "$USER" /opt/raricy
-```
+# 2.2 源码：仓库是公开的，直接 clone，不需要配密钥或 token
+sudo git clone https://github.com/yao1145/raricy_auto_checkin.git /opt/raricy/app
 
-### 2.3 开发机：传输文件
-
-```bash
-scp raricy-checkin-1.0.0.tar docker-compose.yml user@server:/opt/raricy/
-scp backend/config.json   user@server:/opt/raricy/data/config.json
-scp backend/accounts.enc  user@server:/opt/raricy/data/accounts.enc
-scp runtime/.accounts.key user@server:/opt/raricy/key/accounts.key
-
-# 可选：想保留历史打卡日志与博客库就传，想干净开局就跳过
-scp -r runtime/logs runtime/blog.db user@server:/opt/raricy/data/runtime/
-```
-
-**密钥和数据分两个目录是设计的关键** —— 这样备份 `data/` 不会连带把密钥一起带走。
-
-### 2.4 服务器：把 data 与 key 交给容器 uid
-
-**容器以 uid 1000 运行，这一步不做会导致容器写不了配置、面板保存报错。**
-
-```bash
+# 2.3 目录属主交给容器 uid
+# 容器以 uid 1000 运行，这一步不做会导致容器写不了配置、面板保存报错。
 sudo chown -R 1000:1000 /opt/raricy/data
-sudo chown 1000:1000 /opt/raricy/key/accounts.key
+sudo chown -R 1000:1000 /opt/raricy/key
 sudo chmod 400 /opt/raricy/key/accounts.key
 sudo chmod -R u+rwX /opt/raricy/data
 
-# /opt/raricy 本身保持归你的登录用户 —— 第 6 节更新时还要往这里 scp 新 tar
+# /opt/raricy/app 保持归 root 或你的登录用户都行 —— 它只是构建上下文，容器不写它
 ```
 
-> 之后若要再改 `data/` 里的文件，目录已归 uid 1000，你的登录用户可能写不进去。做法是先 `sudo cp` 到临时位置改好再 `sudo mv` 回去，改完记得 `sudo chown 1000:1000`。
+### 2.4 灌入初始数据
+
+`config.json` 就在 clone 下来的源码里，直接拷一份过去：
+
+```bash
+sudo cp /opt/raricy/app/backend/config.json /opt/raricy/data/config.json
+```
+
+`accounts.enc` 和密钥是 gitignore 的，必须从开发机传（**这两个文件不走 git**）：
+
+```bash
+# 在开发机
+scp backend/accounts.enc      user@server:/tmp/accounts.enc
+scp runtime/.accounts.key     user@server:/tmp/accounts.key
+
+# 在服务器
+sudo mv /tmp/accounts.enc /opt/raricy/data/accounts.enc
+sudo mv /tmp/accounts.key /opt/raricy/key/accounts.key
+
+# 可选：想保留历史打卡日志与博客库就传，想干净开局就跳过
+scp -r runtime/logs runtime/blog.db user@server:/tmp/
+sudo mv /tmp/logs /opt/raricy/data/runtime/
+sudo mv /tmp/blog.db /opt/raricy/data/runtime/
+
+# 传完再统一交属主（第 2.3 步在这里再做一次最保险）
+sudo chown -R 1000:1000 /opt/raricy/data
+sudo chown 1000:1000 /opt/raricy/key/accounts.key
+sudo chmod 400 /opt/raricy/key/accounts.key
+```
+
+**密钥和数据分两个目录是设计的关键** —— 这样备份 `data/` 不会连带把密钥一起带走。
 
 ---
 
@@ -140,21 +149,21 @@ sudo chmod -R u+rwX /opt/raricy/data
 
 Rocky 9 默认 **enforcing**。bind mount 不带 SELinux 标签时会被拒绝，容器起不来或挂载点为空。
 
-`docker-compose.yml` 里的四个挂载**已经带了 `:Z` 标签**（`/opt/raricy/data/config.json:/app/backend/config.json:Z` 这种形式），正常情况下你什么都不用做。
+`docker-compose.yml` 里的两个挂载**已经带了 `:Z` 标签**（`/opt/raricy/data:/app/data:Z` 这种形式），正常情况下你什么都不用做。
 
 > ⚠️ **本节未经实测。** 开发机没有真实 SELinux，以下是按文档撰写的处置方式。若你遇到问题，请把 `sudo ausearch -m avc -ts recent` 的输出发我。
 
 被 SELinux 拒绝时的典型特征：
 
 - 容器启动失败，`docker logs` 里是 `Permission denied` 写 `config.json` 或 `accounts.enc`
-- 容器起来了但 `docker exec ... ls /app/runtime` 是空的
+- 容器起来了但 `docker exec ... ls /app/data` 是空的
 - `sudo ausearch -m avc -ts recent` 能看到 `denied ... comm="docker"` 记录
 
 处置：
 
 ```bash
 # 首选：确认 compose 里每个挂载都带 :Z（本仓库已带）
-grep -n ':Z' /opt/raricy/docker-compose.yml
+grep -n ':Z' /opt/raricy/app/docker-compose.yml
 
 # 备选：给目录打上容器可写的 SELinux 标签
 sudo chcon -Rt container_file_t /opt/raricy/data
@@ -168,19 +177,36 @@ sudo setsebool -P container_manage_cgroup true
 
 ---
 
-## 4. 加载镜像并启动
+## 4. 迁移（已经按旧文档部署过的才需要看）
+
+旧部署是「传入镜像 tar + `docker load`」。切到新形态：
 
 ```bash
-cd /opt/raricy
-sudo docker load -i raricy-checkin-1.0.0.tar     # 输出 Loaded image: raricy-checkin:1.0.0
+# 1. 停掉旧容器（旧 compose 在 /opt/raricy/）
+cd /opt/raricy && sudo docker compose down
 
-sudo docker compose up -d
-sudo docker compose ps                            # 应为 running / healthy
+# 2. 按第 2 节 clone 源码到 /opt/raricy/app
+#    注意：数据目录 /opt/raricy/data 与 /opt/raricy/key 原位保留，一个字节都不用动
+
+# 3. 用新 compose 起来
+cd /opt/raricy/app && sudo docker compose up -d --build
+
+# 4. 确认没问题后清理旧产物
+cd /opt/raricy && rm -f raricy-checkin-*.tar docker-compose.yml
+sudo docker rmi raricy-checkin:1.0.0
 ```
 
-等健康检查通过（约 15 秒）：
+**宿主机目录结构没有变**，所以数据、密钥、备份脚本、`chown` 全都原地可用。
+
+---
+
+## 5. 启动与访问
 
 ```bash
+cd /opt/raricy/app
+sudo docker compose up -d --build
+sudo docker compose ps                            # 应为 running / healthy
+
 curl -s http://127.0.0.1:5000/api/health
 # 期望: {"ok":true,"service":"checkin-system"}
 ```
@@ -192,10 +218,6 @@ sudo docker logs --tail 50 raricy-checkin
 ```
 
 开机自启由两部分保证：`systemctl enable docker`（第 1 节，daemon 自启）+ compose 里的 `restart: unless-stopped`（容器自启）。两者都要有。
-
----
-
-## 5. 访问面板
 
 容器只发布到宿主机回环（`127.0.0.1:5000`），**面板本身没有任何鉴权** —— 谁能打开页面，谁就能看到你的账号列表、触发打卡、改配置、删账号。所以不要改成对外监听。
 
@@ -212,19 +234,18 @@ ssh -L 5000:127.0.0.1:5000 user@server
 ## 6. 更新流程
 
 ```bash
-# 1. 开发机：重新构建并指定新版本号
-docker build --platform linux/amd64 -t raricy-checkin:1.0.1 .
-docker save raricy-checkin:1.0.1 -o raricy-checkin-1.0.1.tar
-scp raricy-checkin-1.0.1.tar user@server:/opt/raricy/
+# 开发机：改完代码推到 GitHub
+git push
 
-# 2. 服务器：改 compose 里的 image tag，再加载重启
-cd /opt/raricy
-sudo sed -i 's|raricy-checkin:1.0.0|raricy-checkin:1.0.1|' docker-compose.yml
-sudo docker load -i raricy-checkin-1.0.1.tar
-sudo docker compose up -d
+# 服务器：拉下来重建
+cd /opt/raricy/app
+sudo git pull
+sudo docker compose up -d --build
 ```
 
-> **易错点**：`docker compose up -d` 是否重建容器取决于 `image` 字段指向的 tag 有没有变。如果你 `docker build` 后仍用**同一个 tag** 覆盖，`compose up` 可能什么都不做、继续跑旧容器。每次更新都升版本号，或显式 `docker compose up -d --force-recreate`。
+依赖没变时，Docker 会命中缓存层，通常几秒完成。**改代码不需要动数据目录，也不需要重新传任何文件。**
+
+> **易错点**：`docker compose up -d` 是否重建容器取决于镜像有没有变。`--build` 会先构建再比对，所以更新时始终带上它最省心。
 
 旧镜像记得清理，否则磁盘会累积：
 
@@ -232,16 +253,20 @@ sudo docker compose up -d
 sudo docker image prune -f
 ```
 
+> 想让服务器完全跟不动 Dockerfile 也不要紧：镜像现在由服务器自己构建，`git pull` 之后 `--build` 即可。
+
 ---
 
 ## 7. 备份与恢复
 
 **要备份的东西分两类，且必须分开存放：**
 
-| 内容 | 路径                             | 说明                                                                                     |
-| ---- | -------------------------------- | ---------------------------------------------------------------------------------------- |
-| 数据 | `/opt/raricy/data/`            | `config.json`（配置）、`accounts.enc`（账号密文）、`runtime/`（打卡日志 + 博客库） |
-| 密钥 | `/opt/raricy/key/accounts.key` | **丢了这些账号就恢复不了，只能重新录入**                                           |
+| 内容 | 路径 | 说明 |
+| --- | --- | --- |
+| 数据 | `/opt/raricy/data/` | `config.json`（配置）、`accounts.enc`（账号密文）、`runtime/`（打卡日志 + 博客库） |
+| 密钥 | `/opt/raricy/key/accounts.key` | **丢了这些账号就恢复不了，只能重新录入** |
+
+> 源码不用备份 —— 它在 GitHub 上。
 
 ```bash
 # 数据
@@ -255,11 +280,12 @@ sudo tar czf raricy-key-$(date +%F).tar.gz -C /opt/raricy/key .
 恢复：
 
 ```bash
-sudo docker compose down
+cd /opt/raricy/app && sudo docker compose down
 sudo tar xzf raricy-data-<日期>.tar.gz -C /opt/raricy/data
 sudo tar xzf raricy-key-<日期>.tar.gz -C /opt/raricy/key
 sudo chown -R 1000:1000 /opt/raricy/data
 sudo chown 1000:1000 /opt/raricy/key/accounts.key
+sudo chmod 400 /opt/raricy/key/accounts.key
 sudo docker compose up -d
 ```
 
@@ -267,15 +293,18 @@ sudo docker compose up -d
 
 ## 8. 排错
 
-| 现象                                                               | 原因                                                                                           | 处理                                                                                                                                 |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 本地浏览器打不开面板                                               | SSH 隧道没开或断了                                                                             | 重新`ssh -L 5000:127.0.0.1:5000 user@server`，确认会话没退出                                                                       |
-| 面板返回`accounts_decrypt_failed`                                | `/opt/raricy/key/accounts.key` 与 `/opt/raricy/data/accounts.enc` **不是配套的一对** | 检查密钥是不是从同一台开发机传的。**修好之前不要在面板上保存配置** —— 现在的设计保证它不会覆盖你的数据，但配置也不会保存成功 |
-| 打卡全部失败、提示 404                                             | 传上去的`config.json` 是 Next.js 迁移前的旧版本                                              | 用开发机当前的`backend/config.json` 覆盖，重启容器                                                                                 |
-| 面板保存配置报错 / 写不进去                                        | 宿主机目录属主不是 1000                                                                        | `sudo chown -R 1000:1000 /opt/raricy/data`                                                                                         |
-| 容器起来就退出                                                     | 启动异常                                                                                       | `sudo docker logs --tail 50 raricy-checkin` 看 Python 异常                                                                         |
-| 容器在跑但挂载目录是空的                                           | SELinux 拒绝                                                                                   | 见第 3 节                                                                                                                            |
-| 调度器没在预期时间打卡                                             | 时区不对                                                                                       | `docker exec raricy-checkin date` 应显示北京时间；确认 compose 里 `TZ: Asia/Shanghai` 还在                                       |
-| `docker compose up -d` 后还是旧行为                              | tag 没变，容器没重建                                                                           | 升版本号，或`docker compose up -d --force-recreate`                                                                                |
-| `scp` 报 `dest open "...": Permission denied`                  | `/opt/raricy` 是 `sudo mkdir` 建的，属 root，登录用户写不进去                              | 见 2.2：先`sudo chown -R "$USER" /opt/raricy`，传完文件再由 2.4 交给 uid 1000                                                      |
-| `scp` 报 `stat local "raricy-checkin-1.0.0.tar": No such file` | 还没在开发机上`docker build` + `docker save`，tar 根本不存在                               | 见 2.1。`docker images` 能看到镜像 ≠ 本地有 tar 文件，两者是两回事                                                                |
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 本地浏览器打不开面板 | SSH 隧道没开或断了 | 重新 `ssh -L 5000:127.0.0.1:5000 user@server`，确认会话没退出 |
+| 面板返回 `accounts_decrypt_failed` | `/opt/raricy/key/accounts.key` 与 `/opt/raricy/data/accounts.enc` **不是配套的一对** | 检查密钥是不是从同一台开发机传的。**修好之前不要在面板上保存配置** |
+| 面板保存配置报 500 | 见下面两条 | 先 `sudo docker logs --tail 30 raricy-checkin` 看 Python traceback |
+| ↳ traceback 是 `OSError: [Errno 16] Device or resource busy` | **把单个文件 bind mount 进了容器**（旧 compose 的 `accounts.enc:/app/backend/accounts.enc` 就是这样）。挂载点是 mountpoint，`rename(2)` 覆盖它会 `EBUSY`，而 `accounts.enc` 走 `.tmp` + `os.replace` 原子写 | 用当前仓库的 `docker-compose.yml`（只挂 `/opt/raricy/data` 和 `/opt/raricy/key` 两个目录）。不要自己往 compose 里加单文件挂载 |
+| ↳ traceback 是 `PermissionError: [Errno 13] Permission denied` | 宿主机目录属主不是 1000 | `sudo chown -R 1000:1000 /opt/raricy/data` |
+| 打卡全部失败、提示 404 | 传上去的 `config.json` 是 Next.js 迁移前的旧版本 | 用 `cp /opt/raricy/app/backend/config.json /opt/raricy/data/config.json` 覆盖，重启容器 |
+| 容器起来就退出 | 启动异常 | `sudo docker logs --tail 50 raricy-checkin` 看 Python 异常 |
+| 容器在跑但挂载目录是空的 | SELinux 拒绝 | 见第 3 节 |
+| 调度器没在预期时间打卡 | 时区不对 | `docker exec raricy-checkin date` 应显示北京时间；确认 compose 里 `TZ: Asia/Shanghai` 还在 |
+| `docker compose build` 卡在拉 `python:3.13-slim` | 服务器拉不到 Docker Hub | 见第 1.1 节配 registry 镜像源 |
+| `docker compose build` 卡在 pip install | 服务器到 PyPI 慢/不通 | `sudo docker compose build --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/` |
+| 面板加载正常、但保存后账号没变 | 旧版 `save_config()` 先写 config.json 再写 accounts.enc，后者失败时前者已落盘，形成半截状态 | 升级到当前版本：写入顺序已调换（accounts 先写，失败则 config.json 不动），且挂载方式已修好 |
+| `git pull` 报冲突 | 服务器上直接改过源码 | 别在服务器改代码。`sudo git -C /opt/raricy/app checkout -- .` 丢弃本地改动后重试 |
