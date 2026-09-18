@@ -68,6 +68,13 @@
     </div>
     <div class="card" style="padding:12px 16px;">
       <div class="form-row" style="flex-wrap:wrap;align-items:flex-end;gap:10px;">
+        <div class="form-group" style="flex:2;min-width:200px;">
+          <label>搜索标题</label>
+          <div class="search-wrap">
+            <input type="text" id="filterTitle" placeholder="输入后按回车" autocomplete="off">
+            <button type="button" id="searchClear" class="search-clear" title="清除搜索" hidden>&times;</button>
+          </div>
+        </div>
         <div class="form-group" style="flex:1;min-width:140px;">
           <label>作者</label>
           <select id="filterAuthor" onchange="applyFilters()"><option value="">全部</option></select>
@@ -201,7 +208,9 @@ let selectedIds = new Set();  // 勾选的文章 id
 let _viewBtnListenerAttached = false;  // 「查看」委托监听器只挂载一次
 
 // ── 筛选 / 排序 / 分页状态 ───────────────────────────────
-let filters = { author: "", category: "", minLikes: null, status: "" };
+// title 是「已提交」的搜索词；输入框 #filterTitle 里的是「草稿」，
+// 只有回车或点清除才会写进这里（见 commitSearch / clearSearch）。
+let filters = { title: "", author: "", category: "", minLikes: null, status: "" };
 let sortState = { key: null, dir: "asc" };
 let articles = [];       // 一次加载全部文章，客户端分页
 let likes = [];          // 全部点赞记录
@@ -212,6 +221,7 @@ let loading = false;     // 正在加载全部文章
 
 function buildQuery() {
   const p = new URLSearchParams();
+  if (filters.title) p.set("q", filters.title);
   if (filters.author) p.set("author", filters.author);
   if (filters.category) p.set("category", filters.category);
   if (filters.minLikes != null && filters.minLikes !== "") p.set("min_likes", filters.minLikes);
@@ -249,6 +259,10 @@ async function loadArticles() {
 
 function applyFilters() {
   filters = {
+    // 搜索框是「草稿」语义，只在回车/清除时提交，这里不读它 ——
+    // 否则输入后没回车、转而去动别的筛选，草稿会被顺手生效，
+    // 与「回车触发」的语义自相矛盾。
+    title: filters.title,
     author: document.getElementById("filterAuthor").value,
     category: document.getElementById("filterCategory").value,
     minLikes: document.getElementById("filterMinLikes").value,
@@ -256,6 +270,43 @@ function applyFilters() {
   };
   loadArticles();
 }
+
+// ── 标题搜索（回车提交）───────────────────────────────────
+function commitSearch() {
+  filters.title = document.getElementById("filterTitle").value.trim();
+  updateSearchState();
+  loadArticles();          // loadArticles() 内部会 currentPage = 1，自动回第一页
+}
+
+function clearSearch() {
+  document.getElementById("filterTitle").value = "";
+  filters.title = "";
+  updateSearchState();
+  loadArticles();
+}
+
+// 未提交状态：输入框有内容但尚未回车 → 黄色边框 + 显示清除按钮
+function updateSearchState() {
+  const input = document.getElementById("filterTitle");
+  input.classList.toggle("is-dirty", input.value.trim() !== filters.title);
+  document.getElementById("searchClear").hidden = !input.value;
+}
+
+// 有无生效中的筛选条件 —— 空结果文案据此分岔
+function hasActiveFilters() {
+  return !!(filters.title || filters.author || filters.category || filters.status
+            || Number(filters.minLikes) > 0);
+}
+
+// 脚本在 body 末尾，此时 DOM 已解析完，可以直接绑定（与页面其他监听器一致）
+document.getElementById("filterTitle").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    commitSearch();
+  }
+});
+document.getElementById("filterTitle").addEventListener("input", updateSearchState);
+document.getElementById("searchClear").addEventListener("click", clearSearch);
 
 function setSort(key) {
   if (loading) return;  // 加载期间忽略排序点击
@@ -301,7 +352,10 @@ function renderArticlesTable() {
   document.getElementById("articleCount").textContent = `共 ${totalArticles} 篇`;
 
   if (articles.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无文章，请先扫描目录</td></tr>';
+    // 有筛选条件时说明是「筛没了」，不是「还没扫描」——
+    // 这个文案错误在本次改动前就存在（作者筛到零条也会提示去扫描目录）。
+    const emptyMsg = hasActiveFilters() ? "没有匹配的文章" : "暂无文章，请先扫描目录";
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">${emptyMsg}</td></tr>`;
     renderPagination();
     updateActionButtons();
     updateSortIndicators();

@@ -404,6 +404,19 @@ input:focus, select:focus { outline: none; border-color: var(--cyan); box-shadow
 .form-row > * { flex: 1; }
 .form-hint { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
 
+/* ── 标题搜索框 ──────────────────────────────────────────── */
+.search-wrap { position: relative; }
+.search-wrap input { padding-right: 30px; }
+.search-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px;
+}
+.search-clear:hover { color: var(--text); }
+
+/* 有未提交内容：黄色，区别于 input:focus 的青色边框 */
+input.is-dirty { border-color: var(--yellow); box-shadow: 0 0 0 3px var(--yellow-bg); }
+
 fieldset {
   border: 1px solid var(--border);
   border-radius: 10px;
