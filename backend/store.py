@@ -133,10 +133,17 @@ SORT_COLUMNS = {
 
 
 def query_articles(author=None, category=None, min_likes=None, status=None,
-                   sort=None, order="asc", offset=0, limit=50):
+                   title=None, sort=None, order="asc", offset=0, limit=50):
     """分页查询文章（服务端筛选/排序）。status: 'fetched' | 'unfetched' | None。返回 (rows, total)。"""
     where = []
     params = []
+    if title:
+        # LIKE 的 % 和 _ 是通配符，必须转义，否则搜「_」会命中全部标题 ——
+        # 用户看到的表现就是「搜索坏了」。反斜杠必须第一个替换，
+        # 否则会把自己刚插入的转义符再转义一遍。
+        escaped = title.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where.append("title LIKE ? ESCAPE '\\'")
+        params.append(f"%{escaped}%")
     if author:
         where.append("author = ?")
         params.append(author)
