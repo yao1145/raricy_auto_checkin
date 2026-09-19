@@ -13,7 +13,10 @@ from urllib.parse import urljoin
 import requests
 
 from .checkin import load_config
-from .client import get_api_base, login, api_url
+from .client import (
+    get_api_base, is_core_role, login, api_url, session_role,
+    CorePermissionError, LoginFailedError,
+)
 from . import store
 
 # 目录扫描允许的最大连续失败页数：超过即终止扫描，
@@ -37,6 +40,7 @@ class BlogEngine:
     def __init__(self):
         self.config = load_config()
         self._session = None
+        self._username = ""  # 仅用于报错时点名是哪个账号，clear_session 不必清
 
     # ── Session 管理 ────────────────────────────────────
 
@@ -53,7 +57,34 @@ class BlogEngine:
         """登录并保存已认证 session（供扫描/抓取/点赞使用）"""
         self.clear_session()
         self._session = login(self.config, username, password)
+        self._username = username
         return self._session
+
+    def login_first_core(self, accounts) -> dict:
+        """
+        依次尝试登录，改用第一个 core+ 角色的账号，返回选中的账号字典。
+
+        正文走 GET /api/spider/blogs/:id，站点自 2026-09-18（commit 5eace12）起把该读口
+        收紧为 core+，user 档一律 403。配置面板只能增删账号、没有调整顺序的入口，所以不能
+        照旧写死「第一个启用账号」—— 那样一旦账号顺序不巧，整批正文就会全部静默失败。
+        """
+        failures = []
+        for acc in accounts:
+            try:
+                session = self.login(acc["username"], acc["password"])
+            except LoginFailedError as e:
+                # 单个账号凭据失效不该挡住后面那个真正的 core 账号；
+                # 但限频（RateLimitedError）与网络异常照常抛出，继续试只会把封禁窗口续上。
+                failures.append(f"{acc['username']}（{e}）")
+                continue
+            role = session_role(session) or "未知"
+            if is_core_role(role):
+                return acc
+            failures.append(f"{acc['username']}（角色 {role}）")
+        raise CorePermissionError(
+            "没有 core+ 角色的账号，博客正文抓取需要 core/admin/owner。"
+            f"已尝试：{'、'.join(failures)}"
+        )
 
     def _worker_session(self) -> requests.Session:
         """每个工作线程独立的 session：从已登录 session 复制 cookie jar"""
@@ -149,6 +180,15 @@ class BlogEngine:
                     progress_cb(step, msg, done=done, total=total_count)
                 except Exception:
                     pass
+
+        # 站点已把 GET /api/spider/blogs/:id 收紧为 core+：非 core 账号每篇都拿 403，而 403
+        # 落在下面的「不可重试失败」分支里，只会变成「成功 0，失败 N」的静默空转 —— 面板上
+        # 跟站点故障、网络不通长得一模一样。带着角色信息提前失败，别让整批请求打水漂。
+        role = session_role(self._session)
+        if not is_core_role(role):
+            raise CorePermissionError(
+                f"账号「{self._username}」角色为 {role or '未知'}，博客正文抓取需要 core+ 权限"
+            )
 
         base = self._api_url("blog_content_path", "/api/spider/blogs")
         total = len(article_ids)

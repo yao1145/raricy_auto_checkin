@@ -416,7 +416,7 @@ def blog_scan():
 
 @app.route("/api/blog/fetch", methods=["POST"])
 def blog_fetch():
-    """异步抓取指定文章内容（使用第一个启用账号的已认证 session）"""
+    """异步抓取指定文章内容（使用第一个 core+ 角色的启用账号）"""
     body = request.get_json(silent=True) or {}
     article_ids = body.get("article_ids", [])
     task_id = progress.new_task()
@@ -441,7 +441,9 @@ def blog_fetch():
             if not accounts:
                 progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": {"error": "没有启用的账号"}})
                 return
-            engine.login(accounts[0]["username"], accounts[0]["password"])
+            # 正文接口已收紧为 core+，不能写死第一个启用账号（面板调不了账号顺序），
+            # 否则账号顺序不巧时整批正文静默失败
+            engine.login_first_core(accounts)
             results = engine.fetch_contents(article_ids, progress_cb=cb)
             progress.store_progress(task_id, {**progress.get_progress(task_id), "status": "done", "done": True, "results": results})
         except Exception as e:

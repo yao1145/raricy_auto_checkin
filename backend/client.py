@@ -28,6 +28,27 @@ class NetworkError(CheckinError):
     """网络超时或不可达"""
 
 
+class CorePermissionError(CheckinError):
+    """账号角色不足 —— 站点把该读口收紧到 core+，非 core 账号一律 403"""
+
+
+# 站点角色档位：user < core < admin < owner（上游 src/lib/auth.ts 的 isCoreUser）。
+# /api/spider/* 读口自 2026-09-18（commit 5eace12）起由完全免认证收紧为 core+：
+# 未登录 401「请先登录」，非 core 403「需要核心用户权限」。博客正文抓取走的正是
+# GET /api/spider/blogs/:id，故登录后必须确认角色够档。
+CORE_ROLES = ("core", "admin", "owner")
+
+
+def is_core_role(role) -> bool:
+    """角色是否达到 core 档（core / admin / owner）"""
+    return role in CORE_ROLES
+
+
+def session_role(session: requests.Session) -> str:
+    """取该 session 登录时站点返回的角色；响应里没有 user 字段时返回空串"""
+    return getattr(session, "raricy_role", "") or ""
+
+
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -119,6 +140,10 @@ def login(config: dict, username: str, password: str) -> requests.Session:
 
     if not _verify_login(session, config):
         raise LoginFailedError(f"登录成功但会话未生效：{username}")
+
+    # 站点返回的 user 里带 role，决定该账号能否走 core+ 的 spider 读口（正文抓取）。
+    # 挂在 session 上带走：login() 的返回类型不能变，且 requests.Session 本身无此属性。
+    session.raricy_role = (data.get("user") or {}).get("role") or ""
 
     session.headers.update({
         "Content-Type": "application/json",
