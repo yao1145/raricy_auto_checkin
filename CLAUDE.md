@@ -126,15 +126,6 @@ The `selectors` and most of `fortune` config sections are legacy and no longer u
 - `blog.html`: article table with filter/sort, fetch-and-view content, batch like with per-account daily quota (100/day, auto-disabled when exhausted)
 - `config.html`: every config section (accounts / site / schedule / fortune / api) rendered as a card, saved with a single 保存配置 button at the bottom
 
-## iOS app
-
-`ios/` is a native **SwiftUI** port of the check-in flow (manual check-in + fortune + multi-account). Zero third-party dependencies; no background scheduling (iOS can't guarantee unattended cron). It talks to the same raricy.com endpoints and does not touch the Flask backend.
-
-- `ios/RaricyCheckin/` — SwiftUI sources (Views / ViewModels / Engine / Networking / Storage); endpoints are hardcoded in `Config/AppConfig.swift` (`https://raricy.com`).
-- `ios/README.md` — local build via `xcodegen generate` (or manual project creation in Xcode 15+).
-- `ios/DEPLOY.md` — the **verified no-Mac install path**: push to `main` → GitHub Actions cloud build (`.github/workflows/build-ipa.yml`, unsigned `.ipa` uploaded as artifact) → Windows iLoader "Import IPA" to sign & install. Documents the dead ends too (AltStore / SideStore both fail on iPhone 17 / iOS 26; 7-day free-Apple-ID re-sign limit, manual reinstall each week).
-- The `.ipa` build triggers automatically on `main` pushes; manual trigger via Actions → "Build iOS IPA" → Run workflow.
-
 ## Adjacent directories (not part of the check-in system)
 
 - `raricy/` — HTML snapshots of raricy.com pages (login/checkin/blog/article/index) grabbed in Aug 2026, i.e. *before* the Next.js rewrite. The site is client-rendered now, so this markup no longer matches anything live; prefer the public repo when you need the real structure.

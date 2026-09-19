@@ -5,7 +5,6 @@ __pycache__/
 *.pyc
 docs/
 raricy/
-ios/
 runtime/
 deploy/
 backend/accounts.json
