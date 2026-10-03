@@ -13,6 +13,7 @@ from apscheduler.jobstores.base import JobLookupError
 
 from .checkin import CheckinEngine, load_config, get_enabled_accounts
 from .paths import CONFIG_PATH, LOG_PATH
+from .transfer import start_batch, validate_settings, TransferBusyError
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,9 @@ class CheckinScheduler:
                 "message": result["message"],
                 "already_checked": result.get("already_checked", False),
                 "fortune": result.get("fortune"),
+                "reward_fish": result.get("reward_fish"),
+                "today_fish": result.get("today_fish"),
+                "dried_fish": result.get("dried_fish"),
                 "duration_seconds": result.get("duration_seconds", 0),
                 "trigger": "scheduled",
             }
@@ -143,11 +147,7 @@ class CheckinScheduler:
             # 运势结果日志
             if result.get("fortune") and result["fortune"].get("handled"):
                 f = result["fortune"]
-                logger.info("🔮 [%s] 运势卡片: 第%d/%d张, 结果: %s",
-                             username,
-                             f.get("card_selected", -1) + 1,
-                             f.get("total_cards", 0),
-                             f.get("result_text", ""))
+                logger.info("[%s] 签到奖励: %s 条小鱼干", username, f.get("result_text", ""))
 
             status_icon = "✅" if result["success"] else "❌"
             logger.info("%s [%s] 定时打卡结果: %s", status_icon, username, result["message"])
@@ -202,6 +202,9 @@ class CheckinScheduler:
                 "message": result["message"],
                 "already_checked": result.get("already_checked", False),
                 "fortune": result.get("fortune"),
+                "reward_fish": result.get("reward_fish"),
+                "today_fish": result.get("today_fish"),
+                "dried_fish": result.get("dried_fish"),
                 "duration_seconds": result.get("duration_seconds", 0),
                 "trigger": "manual",
             }
@@ -210,11 +213,7 @@ class CheckinScheduler:
             # 运势结果日志
             if result.get("fortune") and result["fortune"].get("handled"):
                 f = result["fortune"]
-                logger.info("🔮 [%s] 运势卡片: 第%d/%d张, 结果: %s",
-                             username,
-                             f.get("card_selected", -1) + 1,
-                             f.get("total_cards", 0),
-                             f.get("result_text", ""))
+                logger.info("[%s] 签到奖励: %s 条小鱼干", username, f.get("result_text", ""))
 
             all_results.append(result)
 
@@ -224,6 +223,19 @@ class CheckinScheduler:
         return all_results
 
     # ── 调度器生命周期 ────────────────────────────────
+
+    def _transfer_job(self, slot):
+        """同一北京时间日期/时间槽/账号的重复触发使用相同幂等键。"""
+        from zoneinfo import ZoneInfo
+        config = load_config()
+        settings = config.get("transfer", {})
+        if not settings.get("enabled", False):
+            return
+        date = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+        try:
+            return start_batch(config, settings, f"scheduled:{date}:{slot}", "scheduled")
+        except (ValueError, TransferBusyError) as e:
+            logger.warning("定时转账未启动: %s", e)
 
     def start(self):
         """启动调度器：读取配置，创建所有定时任务"""
@@ -240,16 +252,8 @@ class CheckinScheduler:
         # 移除旧任务
         self._remove_all_jobs()
 
-        if not enabled:
-            logger.info("⏸ 定时调度已禁用")
-            return
-
-        if not times:
-            logger.warning("⚠ 未配置打卡时间，调度器空闲")
-            return
-
         # 为每个时间点创建 CronTrigger
-        for t in times:
+        for t in times if enabled else []:
             try:
                 hour, minute = map(int, t.split(":"))
                 job_id = f"checkin_{hour:02d}{minute:02d}"
@@ -269,7 +273,22 @@ class CheckinScheduler:
             except ValueError:
                 logger.error("❌ 时间格式错误: %s", t)
 
-        if not self.scheduler.running:
+        transfer_cfg = config.get("transfer", {})
+        if transfer_cfg.get("enabled", False):
+            try:
+                transfer_cfg = validate_settings(transfer_cfg, require_schedule=True)
+                for t in transfer_cfg["times"]:
+                    hour, minute = map(int, t.split(":"))
+                    self.scheduler.add_job(
+                        self._transfer_job,
+                        trigger=CronTrigger(hour=hour, minute=minute, timezone="Asia/Shanghai"),
+                        args=[t], id=f"transfer_{hour:02d}{minute:02d}",
+                        name=f"转账 {t}", replace_existing=True,
+                    )
+            except ValueError as e:
+                logger.error("定时转账配置无效: %s", e)
+
+        if self.scheduler.get_jobs() and not self.scheduler.running:
             self.scheduler.start()
             logger.info("🚀 调度器已启动")
 
@@ -278,7 +297,7 @@ class CheckinScheduler:
         if self._scheduler is None:
             return
         for job in self._scheduler.get_jobs():
-            if job.id.startswith("checkin_"):
+            if job.id.startswith(("checkin_", "transfer_")):
                 try:
                     self._scheduler.remove_job(job.id)
                 except JobLookupError:
@@ -297,11 +316,11 @@ class CheckinScheduler:
         self._scheduler = None
         self.start()
 
-    def get_next_run(self) -> Optional[str]:
+    def get_next_run(self, prefix="checkin_") -> Optional[str]:
         """获取下一次打卡时间"""
         if self._scheduler is None:
             return None
-        jobs = [j for j in self._scheduler.get_jobs() if j.id.startswith("checkin_")]
+        jobs = [j for j in self._scheduler.get_jobs() if j.id.startswith(prefix)]
         if not jobs:
             return None
         next_times = [j.next_run_time for j in jobs if j.next_run_time]

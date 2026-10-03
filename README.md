@@ -1,6 +1,6 @@
 # raricy.com 自动打卡系统
 
-一个基于 **Python + requests** 的纯 HTTP API 自动化操作台，面向 raricy.com 提供每日自动打卡与博客辅助能力。全程调用网站自身的 HTTP 接口，**零 Selenium / ChromeDriver 依赖**，支持多账号、定时执行、运势卡片抽取、博客目录扫描 / 内容抓取 / 批量点赞，并附带一套科幻风格的四面板 Web 控制台。
+一个基于 **Python + requests** 的纯 HTTP API 自动化操作台，面向 raricy.com 提供每日自动打卡、批量转账与博客辅助能力。全程调用网站自身的 HTTP 接口，**零 Selenium / ChromeDriver 依赖**，支持多账号、定时执行、固定签到奖励、批量手工 / 定时转账、博客目录扫描 / 内容抓取 / 批量点赞，并附带一套科幻风格的五面板 Web 控制台。
 
 ---
 
@@ -17,13 +17,14 @@ raricy.com 自动打卡系统通过 `requests` 直接调用网站 HTTP API 完�
 - **自动打卡** —— 直接调用网站 HTTP API 完成登录与签到，无浏览器依赖
 - **多账号支持** —— 多个账号可分别启用/禁用，支持按需勾选或一键批量打卡
 - **定时执行** —— APScheduler 支持多个每日定时点，适配不同签到时段
-- **运势卡片** —— 打卡后自动抽取运势卡片并记录结果
+- **固定奖励** —— 签到成功直接到账 3 条小鱼干，记录响应中的实际奖励与余额
+- **批量转账** —— 每个启用或选定账号向指定用户名转账指定金额，自动排除收款账号自身，支持手工与独立每日定时
 - **实时进度** —— 打卡 / 博客任务异步执行，前端 500ms 轮询展示步骤与进度条
 - **博客工具** —— 目录扫描、内容抓取、批量点赞，SQLite 持久化，支持筛选与排序
-- **Web 控制台** —— 四面板（控制中心 / 自动打卡 / 博客工具 / 系统配置）+ 科幻动态背景
+- **Web 控制台** —— 五面板（控制中心 / 自动打卡 / 博客工具 / 系统配置）+ 科幻动态背景
 - **账号密文存储** —— 账号凭据以 Fernet 密文落盘，密钥独立存放，误传/误提交不会泄露密码
 - **Docker 部署** —— 可打包为镜像在 Rocky Linux 9 等服务器上无人值守运行
-- **高度可配置** —— 站点、选择器、定时、运势、API 路径均可通过配置面板在线修改
+- **高度可配置** —— 站点、选择器、打卡 / 转账定时、API 路径均可通过配置面板在线修改
 
 ### 1.3 技术架构
 
@@ -35,7 +36,7 @@ CheckinEngine.execute()
         │  requests.Session
         ├─ POST /api/auth/login        → 登录（JSON，下发 JWT 会话 cookie）
         ├─ POST /api/checkin           → 打卡
-        └─ POST /api/checkin/claim     → 运势卡片（可选）
+        └─ 签到响应 reward_fish / today_fish / dried_fish → 奖励与余额（无抽卡）
         │
         ▼
 写入 runtime/logs/checkin_log.json
@@ -74,7 +75,7 @@ raricy_auto_checkin/
 │   ├── store.py                # SQLite 存储层（文章 + 点赞记录）
 │   ├── progress.py             # 通用任务进度存储（内存）
 │   ├── scheduler.py            # APScheduler 定时调度器
-│   ├── config.json             # 站点/选择器/定时/运势/API 配置（不含账号）
+│   ├── config.json             # 站点/选择器/打卡与转账定时/API 配置（不含账号）
 │   ├── accounts.enc            # 账号密文（已 gitignore，不提交）
 │   └── requirements.txt        # Python 依赖
 ├── frontend/
@@ -156,7 +157,7 @@ python run.py
 | 控制中心 | `/`        | 今日状态总览 + 各功能入口                        |
 | 自动打卡 | `/checkin` | 状态查看、账号选择、手动/批量打卡、日志与定时    |
 | 博客工具 | `/blog`    | 博客目录扫描、内容抓取、批量点赞                 |
-| 系统配置 | `/config`  | 账号、站点、选择器、定时、运势、API 路径集中管理 |
+| 系统配置 | `/config`  | 账号、站点、选择器、打卡 / 转账定时、API 路径集中管理 |
 
 ---
 
@@ -181,7 +182,7 @@ POST /api/auth/login {username, password}
   → 获取会话 cookie，并用 GET /api/checkin 复核会话真的生效
   → POST /api/checkin
   → 检测响应：已打卡 / 打卡成功
-  → (可选) POST /api/checkin/claim {chosenIndex}
+  → 签到响应直接包含固定奖励（3 条鱼干）和当前余额
   → 记录日志 → 返回结果
 ```
 
@@ -299,15 +300,25 @@ raricy.com 单账号每日最多点赞 **100** 次，系统会：
 - **当前定时时间** —— 已添加的时间点标签，点击标签右侧 `×` 移除。
 - **添加新时间** —— 选择时间后点击「添加」加入定时列表。
 
-### 5.5 运势卡片
+### 5.5 签到奖励与批量转账
 
-- **启用运势卡片选择** —— 打卡后是否自动抽取运势卡片。
-- **选择器字段** —— 运势弹窗 / 卡片 / 结果相关 CSS 选择器（历史遗留，通常保持默认）。
-- **选择第几张** —— 选牌策略：随机选择，或固定第 1~5 张。
+签到已改为一步式，`POST /api/checkin` 成功即到账固定 **3 条小鱼干**；旧的抽卡设置不再生效，旧日志仍可查看。
+
+在「批量转账」页输入**精确收款用户名**和**每个转出账号的金额**（大于 0，最多 4 位小数），选择全部启用账号或指定账号，然后点击「立即批量转账」。确认框显示收款人、转出账号、每账号金额与预计合计。收款账号自身、同一身份的重复账号会跳过；邮箱登录也按站点返回的真实用户名识别。单个账号失败不影响后续账号。
+
+勾选「启用每日定时转账」，填写北京时间（如 `00:05, 12:00`），点击「保存转账设置」。定时默认关闭，与打卡定时独立；金额、收款人、转出账号和留言均使用保存的设置。所有账号模式会包含以后新增的启用账号。系统需保持运行；若触发时另一个转账批次仍在执行，该次不会启动，原因写入服务器日志。
+
+手工批次携带 UUID；逐账号请求带上游支持的幂等键，网络异常最多使用同键再发一次。同一批次重复请求不会再次扣款，同一批次更改参数会拒绝执行。定时幂等键由北京时间日期、时间槽和真实账号身份生成。页面刷新后同一标签页仍可查看进行中的批次，失败或未确认时使用「用原批次重试」，请勿把重新创建批次当作重试。
+
+记录保存在 `runtime/transfer.db`（随 `RARICY_RUNTIME_DIR` 移动），含上游单号、余额、状态和批次号；请求发送前先记录意图。`待核对` / `未确认` 表示需要核对站点流水，不能按失败直接另发一笔。转账接口无需 core 权限，但账号必须有效且未被禁言。
+
+接口：`POST /api/transfer`（`recipient`, `amount`, `accounts`, 可选 `note`, 必填 UUID `batch_id`），返回 HTTP 202 与 `task_id`；`GET /api/transfer/progress/<task_id>` 查询结果，`GET /api/transfer/status` 查询设置和下次执行，`GET /api/transfer/logs` 查询最近流水。
+
+上游接口依据：[转账路由](https://github.com/raricycms/raricy.com/blob/main/src/app/api/fish/market/transfer/route.ts)、[固定签到奖励](https://github.com/raricycms/raricy.com/blob/main/src/lib/checkin-service.ts)。
 
 ### 5.6 API 设置
 
-- **登录 / 打卡 / 运势 API 路径** —— 分别对应登录、打卡、运势接口（默认 `/api/auth/login`、`/api/checkin`、`/api/checkin/claim`）。
+- **登录 / 打卡 / 转账 / 余额 API 路径** —— 默认 `/api/auth/login`、`/api/checkin`、`/api/fish/market/transfer`、`/api/fish/balance`；余额接口也用于复核登录会话（普通账号不再被 core 门槛误判为登录失败）。
 - **博客列表 / 内容 / 点赞 API 路径** —— 博客工具的目录列表、正文、点赞接口（默认 `/api/blogs`、`/api/spider/blogs`、`/api/blogs`；点赞的实际请求是 `<点赞路径>/<文章 id>/like`）。
 
 ### 5.7 保存配置

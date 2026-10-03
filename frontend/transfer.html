@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>批量转账 · raricy.com</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/ico" href="favicon.ico">
+</head>
+<body>
+<canvas id="space-bg" aria-hidden="true"></canvas>
+<div class="nebula nebula-a"></div><div class="nebula nebula-b"></div><div class="nebula nebula-c"></div>
+<header class="topbar">
+  <a class="brand" href="/"><span class="brand-mark"></span><span class="brand-name">RARICY<span class="brand-sub">AUTO CHECK-IN</span></span></a>
+  <nav class="nav">
+    <a href="/" data-nav="index">控制中心</a>
+    <a href="/checkin" data-nav="checkin">自动打卡</a>
+    <a href="/transfer" data-nav="transfer">批量转账</a>
+    <a href="/blog" data-nav="blog">博客工具</a>
+    <a href="/config" data-nav="config">系统配置</a>
+  </nav>
+</header>
+<main class="container">
+  <header class="page-head">
+    <h1 class="page-title">批量<span class="accent">转账</span></h1>
+    <p class="page-sub">指定收款人 · 每账号固定金额 · 手工或每日定时</p>
+  </header>
+  <section class="card">
+    <h2 class="card-title">转账设置</h2>
+    <fieldset id="transferFields" disabled>
+      <legend>收款人及转出账号</legend>
+      <div class="grid-2">
+        <div class="form-group"><label for="recipient">收款用户名（精确匹配）</label><input id="recipient" type="text" autocomplete="off" required></div>
+        <div class="form-group"><label for="amount">每个账号转出金额（小鱼干）</label><input id="amount" type="number" min="0.0001" step="0.0001" value="3" required></div>
+      </div>
+      <div class="form-group"><label for="note">留言（可选，最多 30 字）</label><input id="note" type="text" maxlength="30"></div>
+      <div class="form-group">
+        <label><input id="allAccounts" type="checkbox" checked style="width:auto;"> 使用所有启用账号（包含以后新增账号）</label>
+        <div id="sourceAccounts" class="transfer-accounts"></div>
+      </div>
+      <p class="transfer-help">收款账号自身自动跳过，邮箱登录会按真实用户名识别。金额是每个转出账号的金额，不是批次总额。余额不足的账号会单独报告失败。</p>
+      <div class="form-group"><label><input id="enabled" type="checkbox" style="width:auto;"> 启用每日定时转账</label></div>
+      <div class="form-group"><label for="times">每天执行时间（北京时间，多个时间用逗号分隔）</label><input id="times" type="text" placeholder="00:05, 12:00"></div>
+      <p id="scheduleStatus" class="transfer-help"></p>
+      <div class="transfer-actions">
+        <button class="btn btn-primary" type="button" onclick="saveSettings()">保存转账设置</button>
+        <button class="btn btn-primary" id="startButton" type="button" onclick="newTransfer()">立即批量转账</button>
+      </div>
+    </fieldset>
+    <p id="error" role="alert" class="transfer-error"></p>
+  </section>
+  <section class="card">
+    <h2 class="card-title">执行进度</h2>
+    <p id="taskStatus" role="status" aria-live="polite">尚未执行转账</p>
+    <div id="results"></div>
+    <button class="btn btn-sm" id="retryButton" type="button" hidden onclick="retryTransfer()">用原批次重试</button>
+    <p id="retryHelp" class="transfer-help" hidden>重试沿用原收款人、金额、账号和单号，已成交的转账不会重复扣款。若显示“未确认”，请先核对站点流水。</p>
+  </section>
+  <section class="card">
+    <div class="transfer-actions"><h2 class="card-title">转账记录</h2><button class="btn btn-sm" type="button" onclick="loadHistory()">刷新记录</button></div>
+    <div class="table-wrap"><table><thead><tr><th>时间</th><th>转出账号</th><th>收款人</th><th>金额</th><th>状态</th><th>说明 / 单号</th><th>触发</th></tr></thead><tbody id="history"></tbody></table></div>
+  </section>
+</main>
+<script src="app.js"></script><script src="bg.js"></script>
+<script>
+let accounts = [];
+let busy = false;
+let pending = null;
+try { pending = JSON.parse(sessionStorage.getItem('raricy-transfer') || 'null'); } catch (_) {}
+const labels = {success: '成功', failed: '失败', skipped: '跳过', unknown: '未确认', pending: '待核对'};
+const el = id => document.getElementById(id);
+function showError(message) { el('error').textContent = message; }
+function persist() {
+  if (pending) sessionStorage.setItem('raricy-transfer', JSON.stringify(pending));
+  else sessionStorage.removeItem('raricy-transfer');
+}
+function setBusy(value) {
+  busy = value;
+  el('transferFields').disabled = value;
+  el('retryButton').hidden = value || !pending;
+  el('retryHelp').hidden = !pending;
+}
+function settings() {
+  const recipient = el('recipient').value.trim();
+  const amount = el('amount').value.trim();
+  const sources = el('allAccounts').checked ? ['all'] : [...document.querySelectorAll('.source-account:checked')].map(x => x.value);
+  const times = el('times').value.split(/[,，\s]+/).filter(Boolean);
+  if (!recipient) throw new Error('请输入收款用户名');
+  if (!/^\d+(\.\d{1,4})?$/.test(amount) || Number(amount) <= 0) throw new Error('金额需大于 0，最多 4 位小数');
+  if (!sources.length) throw new Error('请选择转出账号');
+  if (times.some(t => !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(t))) throw new Error('定时时间格式为 HH:MM');
+  const enabled = el('enabled').checked;
+  if (enabled && !times.length) throw new Error('启用定时转账前请添加时间');
+  return {recipient, amount, accounts: sources, note: el('note').value.trim(), enabled, times};
+}
+function renderAccounts(selected) {
+  el('sourceAccounts').replaceChildren();
+  for (const account of accounts) {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox'; input.className = 'source-account'; input.value = account.username;
+    input.checked = selected.includes(account.username); input.style.width = 'auto';
+    label.append(input, document.createTextNode(' ' + account.username));
+    el('sourceAccounts').append(label);
+  }
+  toggleSources();
+}
+function toggleSources() { el('sourceAccounts').hidden = el('allAccounts').checked; }
+el('allAccounts').addEventListener('change', toggleSources);
+async function loadSettings() {
+  const [data, accountData] = await Promise.all([API.get('/api/transfer/status'), API.get('/api/accounts')]);
+  accounts = accountData.filter(a => a.enabled !== false);
+  const s = data.settings;
+  el('recipient').value = s.recipient || ''; el('amount').value = s.amount || '3'; el('note').value = s.note || '';
+  el('enabled').checked = s.enabled === true; el('times').value = (s.times || []).join(', ');
+  const selected = s.accounts || ['all']; el('allAccounts').checked = selected.includes('all');
+  renderAccounts(selected);
+  el('scheduleStatus').textContent = data.next_scheduled ? '下次定时转账：' + data.next_scheduled : '暂无定时转账任务';
+}
+async function saveSettings() {
+  if (busy) return;
+  try {
+    const s = settings();
+    showError(''); setBusy(true);
+    await API.post('/api/config', {path: ['transfer'], value: s});
+    await loadSettings(); toast('转账设置已保存');
+  } catch (e) { showError(e.message); }
+  finally { setBusy(false); }
+}
+function newTransfer() {
+  if (busy) return;
+  try {
+    const s = settings();
+    const sources = accounts.filter(a => (s.accounts.includes('all') || s.accounts.includes(a.username)) && a.username !== s.recipient);
+    if (!sources.length) throw new Error('没有可转出的账号（收款账号自身已排除）');
+    const total = (Number(s.amount) * sources.length).toFixed(4);
+    if (!confirm(`收款人：${s.recipient}\n每账号：${s.amount} 小鱼干\n转出账号：${sources.map(a => a.username).join('、')}\n最多合计：${total} 小鱼干（收款人邮箱别名也会跳过）\n\n确认执行新的转账批次？`)) return;
+    // 手工批次冻结账号列表，重试时不把后来新增的账号算成新交易。
+    pending = {batch_id: crypto.randomUUID(), settings: {...s, accounts: sources.map(a => a.username)}}; persist();
+    submitPending();
+  } catch (e) { showError(e.message); }
+}
+function retryTransfer() { if (!busy && pending) submitPending(); }
+async function submitPending() {
+  setBusy(true); showError('');
+  try {
+    const data = await API.post('/api/transfer', {...pending.settings, batch_id: pending.batch_id});
+    pending.task_id = data.task_id; persist();
+    poll();
+  } catch (e) { showError(e.message); setBusy(false); }
+}
+function renderResults(results) {
+  el('results').innerHTML = results.map(r => `<div class="status-row"><span>${escapeHtml(r.account)}</span><span>${labels[r.status] || escapeHtml(r.status)} · ${escapeHtml(r.message)}</span></div>`).join('');
+}
+async function poll() {
+  if (!pending?.task_id) return;
+  try {
+    const data = await API.get('/api/transfer/progress/' + pending.task_id);
+    renderResults(data.results || []);
+    el('taskStatus').textContent = data.error || (data.done ? '批次完成，请查看各账号结果' : `已完成 ${(data.results || []).length}/${data.total || '?'}，${data.current_account ? '正在处理 ' + data.current_account : '准备中'}`);
+    if (data.done) {
+      const safe = !data.error && (data.results || []).length && data.results.every(r => r.status === 'success' || r.status === 'skipped');
+      if (safe) pending = null;
+      else if (pending) delete pending.task_id;
+      persist(); setBusy(false); await loadHistory();
+    } else setTimeout(poll, 600);
+  } catch (e) {
+    showError('进度暂不可用：' + e.message + '。可用原批次重试，避免重复扣款。');
+    setBusy(false);
+  }
+}
+async function loadHistory() {
+  try {
+    const data = await API.get('/api/transfer/logs');
+    el('history').innerHTML = data.logs.map(r => `<tr><td>${escapeHtml(r.timestamp)}</td><td>${escapeHtml(r.account)}</td><td>${escapeHtml(r.recipient)}</td><td>${escapeHtml(r.amount)}</td><td>${labels[r.status] || escapeHtml(r.status)}</td><td>${escapeHtml(r.message)}${r.transfer_id ? '<br>' + escapeHtml(r.transfer_id) : ''}</td><td>${r.trigger === 'scheduled' ? '定时' : '手动'}</td></tr>`).join('') || '<tr><td colspan="7">暂无转账记录</td></tr>';
+  } catch (e) { showError('加载转账记录失败：' + e.message); }
+}
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await loadSettings(); await loadHistory(); setBusy(false);
+    if (pending?.task_id) { setBusy(true); poll(); }
+  } catch (e) { showError('加载转账设置失败：' + e.message); }
+});
+</script>
+</body>
+</html>

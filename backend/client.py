@@ -86,15 +86,14 @@ def api_url(config: dict, key: str, default: str) -> str:
 
 def _verify_login(session: requests.Session, config: dict) -> bool:
     """
-    登录后用 GET 打卡接口确认会话真的生效。
+    登录后用 GET 余额接口确认会话真的生效（普通账号也能访问）。
 
     为什么不只看登录接口的 code==200：会话 cookie 在 Secure 标记与反代协议不一致时
     会被客户端静默丢弃（站点 session.ts 里专门记录了「返回 200 登录成功，但会话不粘、
     刷新仍未登录，且无任何报错」这个坑）。只有再发一次带 cookie 的请求才能暴露它。
     """
-    checkin_path = config.get("api", {}).get("checkin_path") or "/api/checkin"
     try:
-        resp = session.get(api_url(config, "checkin_path", checkin_path), timeout=10)
+        resp = session.get(api_url(config, "balance_path", "/api/fish/balance"), timeout=10)
         return resp.status_code == 200 and resp.json().get("code") == 200
     except (requests.RequestException, ValueError):
         return False
@@ -144,6 +143,8 @@ def login(config: dict, username: str, password: str) -> requests.Session:
     # 站点返回的 user 里带 role，决定该账号能否走 core+ 的 spider 读口（正文抓取）。
     # 挂在 session 上带走：login() 的返回类型不能变，且 requests.Session 本身无此属性。
     session.raricy_role = (data.get("user") or {}).get("role") or ""
+    session.raricy_username = (data.get("user") or {}).get("username") or username
+    session.raricy_user_id = (data.get("user") or {}).get("id") or ""
 
     session.headers.update({
         "Content-Type": "application/json",

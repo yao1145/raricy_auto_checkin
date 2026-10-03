@@ -18,23 +18,23 @@
     "timezone": "Asia/Shanghai",
     "enabled": true
   },
-  "fortune": {
-    "enabled": true,
-    "modal_selector": ".fortune-modal--open",
-    "card_selector": ".fortune-card",
-    "result_container_selector": "#fortuneResult",
-    "result_value_selector": "#fortuneResultValue",
-    "result_desc_selector": "#fortuneResultDesc",
-    "close_button_selector": "#fortuneCloseBtn",
-    "card_index": "random",
-    "modal_wait_timeout": 10
-  },
   "api": {
     "login_path": "/api/auth/login",
     "checkin_path": "/api/checkin",
-    "fortune_path": "/api/checkin/claim",
     "blog_listing_path": "/api/blogs",
     "blog_content_path": "/api/spider/blogs",
-    "blog_like_path": "/api/blogs"
+    "blog_like_path": "/api/blogs",
+    "transfer_path": "/api/fish/market/transfer",
+    "balance_path": "/api/fish/balance"
+  },
+  "transfer": {
+    "enabled": false,
+    "recipient": "",
+    "amount": "3",
+    "accounts": [
+      "all"
+    ],
+    "note": "",
+    "times": []
   }
 }

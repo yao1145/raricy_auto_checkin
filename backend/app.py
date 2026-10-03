@@ -16,6 +16,7 @@ from .scheduler import CheckinScheduler, get_scheduler, read_logs, get_today_sta
 from .blog import BlogEngine
 from .paths import ACCOUNTS_ENC_PATH, CONFIG_PATH, DATA_DIR, FRONTEND_DIR, KEY_PATH, RUNTIME_DIR
 from . import store, progress
+from . import transfer
 
 # ── 日志配置 ──────────────────────────────────────────────
 logging.basicConfig(
@@ -65,6 +66,12 @@ def save_config(data: dict):
     让它先失败就不会出现「面板报保存失败、config.json 却已经改了」的半截状态 ——
     凭证比设置更值钱，也更容易被这种静默偏差搞乱。
     """
+    settings = data.get("transfer")
+    if settings is not None:
+        if not isinstance(settings, dict) or not isinstance(settings.get("enabled", False), bool):
+            raise ValueError("转账设置或启用状态无效")
+        if settings.get("enabled") or settings.get("recipient"):
+            data["transfer"] = transfer.validate_settings(settings, require_schedule=settings.get("enabled", False))
     accounts = data.pop("accounts", None)
     if accounts is not None:
         save_accounts(accounts)
@@ -219,6 +226,9 @@ def trigger_checkin():
                 "message": result["message"],
                 "already_checked": result.get("already_checked", False),
                 "fortune": result.get("fortune"),
+                "reward_fish": result.get("reward_fish"),
+                "today_fish": result.get("today_fish"),
+                "dried_fish": result.get("dried_fish"),
                 "duration_seconds": result.get("duration_seconds", 0),
                 "trigger": "manual",
             }
@@ -270,6 +280,51 @@ def checkin_index():
 
 
 # ── 路由：配置面板 ────────────────────────────────────────
+@app.route("/transfer")
+def transfer_index():
+    return send_from_directory(str(FRONTEND_DIR), "transfer.html")
+
+
+@app.route("/api/transfer", methods=["POST"])
+def trigger_transfer():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "请提供转账参数"}), 400
+    batch_id = body.get("batch_id")
+    try:
+        # 调用方持有批次号，连接中断后可用原号重试。
+        batch_id = str(uuid.UUID(batch_id))
+        config = load_config()
+        settings = transfer.validate_settings(body)
+        task_id = transfer.start_batch(config, settings, batch_id)
+    except (ValueError, TypeError, AttributeError) as e:
+        return jsonify({"error": str(e) or "batch_id 需为 UUID"}), 400
+    except transfer.TransferBusyError as e:
+        return jsonify({"error": str(e)}), 409
+    return jsonify({"task_id": task_id, "batch_id": batch_id}), 202
+
+
+@app.route("/api/transfer/progress/<task_id>")
+def transfer_progress(task_id):
+    data = progress.get_progress(task_id)
+    if data is None:
+        return jsonify({"error": "任务不存在或已过期"}), 404
+    return jsonify(data)
+
+
+@app.route("/api/transfer/status")
+def transfer_status():
+    config = load_config()
+    return jsonify({"settings": config.get("transfer", {"enabled": False, "times": [], "accounts": ["all"],
+                                                        "recipient": "", "amount": "3", "note": ""}),
+                    "next_scheduled": get_scheduler().get_next_run("transfer_")})
+
+
+@app.route("/api/transfer/logs")
+def transfer_logs():
+    return jsonify({"logs": transfer.read_history(request.args.get("limit", 50, type=int))})
+
+
 @app.route("/config")
 def config_index():
     """返回配置面板"""
@@ -609,7 +664,10 @@ def update_config():
         else:
             node[path[-1]] = value
 
-        save_config(config)
+        try:
+            save_config(config)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         logger.info("配置已更新: %s = %s", ".".join(path),
                      "****" if path[-1] == "password" else value)
 
@@ -622,8 +680,11 @@ def update_config():
         for acc in incoming.get("accounts", []):
             if acc.get("password") == "****":
                 acc["password"] = old_pwd_map.get(acc["username"], "")
-        config = incoming
-        save_config(config)
+        config = {**config, **incoming}
+        try:
+            save_config(config)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
         logger.info("配置已整体更新")
     else:
         return jsonify({"error": "请提供 path + value 或完整配置对象"}), 400

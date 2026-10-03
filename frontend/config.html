@@ -21,6 +21,7 @@
   <nav class="nav">
     <a href="/" data-nav="index">控制中心</a>
     <a href="/checkin" data-nav="checkin">自动打卡</a>
+    <a href="/transfer" data-nav="transfer">批量转账</a>
     <a href="/blog" data-nav="blog">博客工具</a>
     <a href="/config" data-nav="config">系统配置</a>
   </nav>
@@ -123,55 +124,10 @@
     </div>
   </section>
 
-  <!-- 运势卡片 -->
   <section class="card">
-    <div class="card-title">运势卡片</div>
-    <fieldset>
-      <legend>运势卡片</legend>
-      <div class="form-group">
-        <label>
-          <input type="checkbox" id="cfg_fortune_enabled" style="width:auto;" checked>
-          启用运势卡片选择
-        </label>
-      </div>
-      <div class="grid-2">
-        <div class="form-group">
-          <label for="cfg_fortune_modal">弹窗选择器</label>
-          <input type="text" id="cfg_fortune_modal" placeholder=".fortune-modal--open">
-        </div>
-        <div class="form-group">
-          <label for="cfg_fortune_card">卡片选择器</label>
-          <input type="text" id="cfg_fortune_card" placeholder=".fortune-card">
-        </div>
-        <div class="form-group">
-          <label for="cfg_fortune_result_container">结果容器选择器</label>
-          <input type="text" id="cfg_fortune_result_container" placeholder="#fortuneResult">
-        </div>
-        <div class="form-group">
-          <label for="cfg_fortune_result_value">结果值选择器</label>
-          <input type="text" id="cfg_fortune_result_value" placeholder="#fortuneResultValue">
-        </div>
-        <div class="form-group">
-          <label for="cfg_fortune_result_desc">结果描述选择器</label>
-          <input type="text" id="cfg_fortune_result_desc" placeholder="#fortuneResultDesc">
-        </div>
-        <div class="form-group">
-          <label for="cfg_fortune_close_btn">关闭按钮选择器</label>
-          <input type="text" id="cfg_fortune_close_btn" placeholder="#fortuneCloseBtn">
-        </div>
-        <div class="form-group">
-          <label for="cfg_fortune_index">选择第几张 (0~4 或 random)</label>
-          <select id="cfg_fortune_index">
-            <option value="random">随机选择</option>
-            <option value="0">第 1 张</option>
-            <option value="1">第 2 张</option>
-            <option value="2">第 3 张</option>
-            <option value="3">第 4 张</option>
-            <option value="4">第 5 张</option>
-          </select>
-        </div>
-      </div>
-    </fieldset>
+    <div class="card-title">签到奖励</div>
+    <p>签到成功直接到账固定 3 条小鱼干，无需抽取运势。奖励由站点发放。</p>
+    <p><a href="/transfer">批量转账与独立定时设置 →</a></p>
   </section>
 
   <!-- API 设置 -->
@@ -188,8 +144,12 @@
         <input type="text" id="cfg_checkin_path" placeholder="/api/checkin">
       </div>
       <div class="form-group">
-        <label for="cfg_fortune_path">运势 API 路径</label>
-        <input type="text" id="cfg_fortune_path" placeholder="/api/checkin/claim">
+        <label for="cfg_transfer_path">转账 API 路径</label>
+        <input type="text" id="cfg_transfer_path" placeholder="/api/fish/market/transfer">
+      </div>
+      <div class="form-group">
+        <label for="cfg_balance_path">会话验证 / 余额 API 路径</label>
+        <input type="text" id="cfg_balance_path" placeholder="/api/fish/balance">
       </div>
       <div class="form-group">
         <label for="cfg_blog_listing_path">博客列表 API 路径</label>
@@ -336,19 +296,11 @@ async function loadConfig() {
     // API 路径
     document.getElementById("cfg_login_path").value = config.api?.login_path || "/api/auth/login";
     document.getElementById("cfg_checkin_path").value = config.api?.checkin_path || "/api/checkin";
-    document.getElementById("cfg_fortune_path").value = config.api?.fortune_path || "/api/checkin/claim";
+    document.getElementById("cfg_transfer_path").value = config.api?.transfer_path || "/api/fish/market/transfer";
+    document.getElementById("cfg_balance_path").value = config.api?.balance_path || "/api/fish/balance";
     document.getElementById("cfg_blog_listing_path").value = config.api?.blog_listing_path || "/api/blogs";
     document.getElementById("cfg_blog_content_path").value = config.api?.blog_content_path || "/api/spider/blogs";
     document.getElementById("cfg_blog_like_path").value = config.api?.blog_like_path || "/api/blogs";
-    // 运势卡片配置
-    document.getElementById("cfg_fortune_enabled").checked = config.fortune?.enabled ?? true;
-    document.getElementById("cfg_fortune_modal").value = config.fortune?.modal_selector || ".fortune-modal--open";
-    document.getElementById("cfg_fortune_card").value = config.fortune?.card_selector || ".fortune-card";
-    document.getElementById("cfg_fortune_result_container").value = config.fortune?.result_container_selector || "#fortuneResult";
-    document.getElementById("cfg_fortune_result_value").value = config.fortune?.result_value_selector || "#fortuneResultValue";
-    document.getElementById("cfg_fortune_result_desc").value = config.fortune?.result_desc_selector || "#fortuneResultDesc";
-    document.getElementById("cfg_fortune_close_btn").value = config.fortune?.close_button_selector || "#fortuneCloseBtn";
-    document.getElementById("cfg_fortune_index").value = config.fortune?.card_index || "random";
     // 定时设置
     document.getElementById("scheduleEnabled").checked = config.schedule?.enabled ?? true;
     scheduleTimes = config.schedule?.times || [];
@@ -368,7 +320,6 @@ async function loadConfig() {
 // ── 保存配置 ─────────────────────────────────────────────
 async function saveConfig() {
   const get = id => document.getElementById(id).value;
-  const getBool = id => document.getElementById(id).checked;
 
   // 构建账号数组：新增账号保留真实密码，已有账号若密码为 **** 则保留原密码
   const accounts = configAccounts.map(acc => ({
@@ -396,21 +347,11 @@ async function saveConfig() {
       timezone: "Asia/Shanghai",
       enabled: document.getElementById("scheduleEnabled").checked,
     },
-    fortune: {
-      enabled: getBool("cfg_fortune_enabled"),
-      modal_selector: get("cfg_fortune_modal"),
-      card_selector: get("cfg_fortune_card"),
-      result_container_selector: get("cfg_fortune_result_container"),
-      result_value_selector: get("cfg_fortune_result_value"),
-      result_desc_selector: get("cfg_fortune_result_desc"),
-      close_button_selector: get("cfg_fortune_close_btn"),
-      card_index: get("cfg_fortune_index"),
-      modal_wait_timeout: 10,
-    },
     api: {
       login_path: get("cfg_login_path"),
       checkin_path: get("cfg_checkin_path"),
-      fortune_path: get("cfg_fortune_path"),
+      transfer_path: get("cfg_transfer_path"),
+      balance_path: get("cfg_balance_path"),
       blog_listing_path: get("cfg_blog_listing_path"),
       blog_content_path: get("cfg_blog_content_path"),
       blog_like_path: get("cfg_blog_like_path"),

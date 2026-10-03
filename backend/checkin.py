@@ -1,12 +1,11 @@
 """
-打卡引擎 — 纯 requests 实现登录、打卡和运势抽取。
+打卡引擎 — 纯 requests 实现登录、打卡和固定签到奖励。
 无 Selenium / ChromeDriver 依赖。
 """
 
 import json
 import logging
 import os
-import random
 import time
 from datetime import datetime
 
@@ -114,8 +113,7 @@ class CheckinEngine:
     def _api_checkin(self, session: requests.Session) -> dict:
         """
         通过 HTTP API 执行打卡。
-        POST /api/checkin —— 不接收 body，签到与运势抽卡是分开的两步
-        （第二步见 _api_claim_fortune）。
+        POST /api/checkin —— 不接收 body，签到成功即到账固定 3 条鱼干。
 
         响应码：200 签到成功 / 400 今天已签到（body 带 already_checked）/ 401 未登录。
         """
@@ -128,56 +126,6 @@ class CheckinEngine:
             raise NetworkError(f"打卡API返回非JSON: {resp.status_code}")
         return data
 
-    def _api_claim_fortune(self, session: requests.Session,
-                           chosen_index: int | None = None) -> dict | None:
-        """
-        通过 HTTP API 抽取运势卡片。
-        POST /api/checkin/claim —— body 字段为 camelCase 的 chosenIndex（0-4）。
-        """
-        url = api_url(self.config, "fortune_path", "/api/checkin/claim")
-
-        fortune_cfg = self.config.get("fortune", {})
-
-        if chosen_index is None:
-            card_index = fortune_cfg.get("card_index", "random")
-            if card_index == "random":
-                chosen_index = random.randint(0, 4)
-            else:
-                chosen_index = int(card_index) % 5
-
-        fortune_result = {
-            "handled": False,
-            "card_selected": chosen_index,
-            "total_cards": 5,
-            "result_value": None,
-            "result_desc": "",
-            "result_text": "",
-        }
-
-        try:
-            resp = session.post(
-                url,
-                json={"chosenIndex": chosen_index},
-                timeout=15,
-            )
-            data = resp.json()
-
-            if data.get("code") == 200:
-                fortune_value = data.get("fortune_value")
-                pool = data.get("pool", [])
-                fortune_result["handled"] = True
-                fortune_result["already_claimed"] = bool(data.get("already_claimed"))
-                fortune_result["result_value"] = str(fortune_value) if fortune_value is not None else ""
-                fortune_result["result_text"] = str(fortune_value) if fortune_value is not None else ""
-                fortune_result["pool"] = pool
-            else:
-                fortune_result["result_text"] = data.get("message", "运势抽取失败")
-
-        except Exception as e:
-            fortune_result["result_text"] = f"运势API请求异常: {e}"
-
-        return fortune_result
-
     # ── 打卡流程 ────────────────────────────────────────
 
     def execute(self, username: str = "", password: str = "",
@@ -187,7 +135,7 @@ class CheckinEngine:
 
         1. requests 登录 (POST /api/auth/login)
         2. HTTP API 打卡 (POST /api/checkin)
-        3. HTTP API 运势卡片 (POST /api/checkin/claim)
+        3. 从签到响应读取固定奖励和余额（无抽卡请求）
 
         Args:
             username: 登录用户名
@@ -259,6 +207,15 @@ class CheckinEngine:
                 raise NetworkError(f"打卡API请求失败: {e}")
 
             code = checkin_data.get("code")
+            if code == 200 or checkin_data.get("already_checked"):
+                result["reward_fish"] = checkin_data.get("reward_fish", 3)
+                result["today_fish"] = checkin_data.get("today_fish", result["reward_fish"])
+                result["dried_fish"] = checkin_data.get("dried_fish")
+                result["total_days"] = checkin_data.get("total_count")
+                # fortune 字段保留用于读取旧日志；当前表示实际到账的固定奖励。
+                value = str(result["today_fish"])
+                result["fortune"] = {"handled": True, "fixed": True,
+                                     "result_value": value, "result_text": value}
 
             if code == 401:
                 _progress("error", "登录已过期")
@@ -286,27 +243,6 @@ class CheckinEngine:
             _add_step("done", "打卡成功")
             result["success"] = True
             result["message"] = checkin_data.get("message", "打卡成功 ✓")
-
-            # ── 阶段3: 运势卡片（可选）───────────────────
-            fortune_cfg = self.config.get("fortune", {})
-            show_fortune = checkin_data.get("show_fortune", False)
-            fortune_pending = checkin_data.get("fortune_pending", False)
-
-            if fortune_cfg.get("enabled", False) and (show_fortune or fortune_pending):
-                _progress("fortune", "正在抽取运势...")
-                _add_step("running", "正在抽取运势卡片...")
-
-                fortune_result = self._api_claim_fortune(self.session)
-                if fortune_result:
-                    result["fortune"] = fortune_result
-                    if fortune_result.get("handled"):
-                        _progress("fortune_done",
-                                  f"运势: {fortune_result.get('result_text', '')}")
-                        _add_step("done",
-                                  f"运势卡片: {fortune_result.get('result_text', '')}")
-                    else:
-                        _add_step("done",
-                                  "运势: " + fortune_result.get("result_text", "未获取"))
 
             _progress("done", "打卡完成")
 
